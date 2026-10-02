@@ -609,6 +609,10 @@ input,button,select,textarea{touch-action:manipulation}
 .urow .ub button{border:1px solid var(--edge2);background:transparent;color:var(--graphite);font-family:var(--mono);font-size:9.5px;padding:6px 8px;cursor:pointer}
 .urow .ub button:hover{border-color:var(--blue);color:var(--blue)}
 .cred{margin:10px 16px;padding:12px 14px;border:1px solid var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)}
+.linkb{border:0;background:transparent;color:var(--blue);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+.arow{display:flex;gap:12px;padding:9px 16px;border-bottom:1px solid var(--edge);align-items:baseline}
+.arow .d{font-family:var(--mono);font-size:9.5px;color:var(--faint);white-space:nowrap}
+.arow .t{font-size:12.5px;color:var(--graphite)}
 .credv{font-family:var(--mono);font-size:15px;font-weight:700;margin:6px 0;user-select:all;word-break:break-all}
 </style>
 
@@ -732,7 +736,7 @@ input,button,select,textarea{touch-action:manipulation}
   let saveOk=true, saveQ=Promise.resolve();
   const save=()=>(saveQ=saveQ.then(doSave,doSave));
   async function doSave(){
-    if(!db||!token) return;
+    if(!db||!token||viewAs) return;         // read-only "view as": nothing is ever written back
     const cur=new Map(db.entries.map(e=>[e.id,JSON.stringify(e)]));
     const metaStr=JSON.stringify(metaOf(db));
     const upserts=[], deletes=[];
@@ -774,6 +778,9 @@ input,button,select,textarea{touch-action:manipulation}
   const ATT_MAX=5*1024*1024, ATT_LIMIT=5, IMG_EDGE=1600;
   const fileCache=new Map();                       // fileId -> {url,name,mime}
   let panel=null, attView=null, usersList=null, newCred=null, panelErr='';
+  let viewAs=null, auditList=null;           // admin "view as" read-only mode: {id,username,name}
+  let myDb=null, myMe=null, myRev=0, mySaved=null;   // the admin's own ledger, parked while viewing someone else's
+  const RO=()=>!!viewAs;
   const readB64=blob=>new Promise((res,rej)=>{
     const r=new FileReader();
     r.onload=()=>res(String(r.result).split(',')[1]||'');
@@ -894,10 +901,13 @@ input,button,select,textarea{touch-action:manipulation}
     if(panel==='users'){
       const rows=(usersList||[]).map(u=>`<div class="urow${u.active?'':' off'}">
           <div class="un"><b>${esc(u.name)}</b><small>${esc(u.username)}${u.role==='admin'?' · admin':''}${u.active?'':' · disabled'}</small></div>
-          <div class="ub"><button data-ures="${esc(u.id)}">Reset password</button>
+          <div class="ub">${u.id===me.id?'':`<button data-uview="${esc(u.id)}">View ledger</button>`}
+            <button data-ures="${esc(u.id)}">Reset password</button>
             ${u.id===me.id?'':`<button data-uact="${esc(u.id)}" data-on="${u.active?'0':'1'}">${u.active?'Disable':'Enable'}</button>`}</div></div>`).join('');
       return `<div class="ovl" id="ovlp"><div class="card">
         <div class="ph"><span>Users</span><button class="xx" id="p_x">✕</button></div>
+        <p class="bkp">Everyone's ledger is private to them. <b style="color:var(--chalk);display:inline">View ledger</b> opens it for
+          you to read — every view is recorded in the <button class="linkb" id="u_audit">audit log</button>.</p>
         ${newCred?`<div class="cred"><div class="lbl">${esc(newCred.label)}</div>
           <div class="credv">${esc(newCred.username)} &nbsp;/&nbsp; ${esc(newCred.password)}</div>
           <div class="hint">Shown once. Copy it now and send it to the user privately.</div></div>`:''}
@@ -910,6 +920,16 @@ input,button,select,textarea{touch-action:manipulation}
         <div class="bkrow"><button class="save good" id="u_add">Create user</button></div>
         <div class="hint" id="u_msg">${esc(panelErr)}</div></div></div>`;
     }
+    if(panel==='audit'){
+      const rows=(auditList||[]).map(r=>`<div class="arow">
+        <div class="d">${esc(new Date(r.ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</div>
+        <div class="t"><b>${esc(r.admin)}</b> ${esc(r.action)}${r.target&&r.target!==r.admin?' — '+esc(r.target):''}</div></div>`).join('');
+      return `<div class="ovl" id="ovlp"><div class="card">
+        <div class="ph"><span>Audit log</span><button class="xx" id="p_x">✕</button></div>
+        <p class="bkp">Every admin action — viewing a ledger, creating a user, resetting a password — appended here, oldest action never edited.</p>
+        ${auditList?(rows||'<div class="hint" style="padding:0 16px">Nothing yet.</div>'):'<div class="hint" style="padding:0 16px">Loading…</div>'}
+        </div></div>`;
+    }
     return '';
   }
   async function openUsers(){
@@ -918,6 +938,34 @@ input,button,select,textarea{touch-action:manipulation}
     if(panel!=='users') return;
     if(r.ok) usersList=r.data; else panelErr=r.msg||'Could not load users.';
     render();
+  }
+  async function openAudit(){
+    panel='audit'; auditList=null; render();
+    const r=await RPC('listAudit');
+    if(panel!=='audit') return;
+    if(r.ok) auditList=r.data;
+    render();
+  }
+
+  // ---------- admin: read-only "view as" ----------
+  async function enterViewAs(u){
+    panel=null; panelErr='';
+    const r=await RPC('adminLoad',{userId:u.id});
+    if(!r.ok){ panelErr=r.msg||'Could not open that ledger.'; panel='users'; render(); return; }
+    myDb=db; myMe=me; myRev=rev; mySaved=saved;              // park the admin's own ledger
+    viewAs={id:u.id,username:u.username,name:u.name};
+    const raw=r.data.doc||{};
+    saved={entries:new Map(),meta:''};                       // never diffed against — RO never saves
+    rev=r.data.rev; me=r.data.user;
+    normalize(raw);
+    sel=today(); tab='home'; mode=null; draft={}; editId=null;
+    render(); window.scrollTo(0,0);
+  }
+  function exitViewAs(){
+    viewAs=null; db=myDb; me=myMe; rev=myRev; saved=mySaved;
+    myDb=null; myMe=null; mySaved=null;
+    sel=today(); tab='home'; mode=null; draft={}; editId=null;
+    render(); window.scrollTo(0,0);
   }
 
   // ---------- engine (monthly-envelope model) ----------
@@ -1203,25 +1251,32 @@ input,button,select,textarea{touch-action:manipulation}
           </div></div>
         <div class="nav">${[['home','home'],['day','day'],['review','review'],['year','year'],['plan','plan']].map(([t,lbl])=>
           `<button class="${tab===t?'on':''}" data-t="${t}">${lbl}</button>`).join('')}</div>
-        ${backupDue()?`<div class="alarm" style="border-color:var(--ochre)">
+        ${viewAs?`<div class="alarm" style="border-color:var(--blue)">
+          <b style="color:var(--blue)">Read-only — viewing ${esc(viewAs.name)}'s ledger</b>
+          You are signed in as admin, looking at another user's data. Nothing here can be changed or added.
+          This view was just recorded in the audit log.
+          <button class="act backAdminBtn" style="margin-top:9px">Back to my ledger</button></div>`:''}
+        ${(!RO()&&backupDue())?`<div class="alarm" style="border-color:var(--ochre)">
           <b style="color:var(--ochre)">Back this up</b>
           ${db.lastBackup?`It has been ${Math.floor((Date.now()-db.lastBackup)/86400000)} day(s) since your last backup.`
             :`You have ${db.entries.length} entries and no backup yet.`}
           Your ledger is stored on the server, but keep your own copy too — a backup file is
           your protection against a mistaken restore or erase.
           <button class="act" id="baknow" style="margin-top:9px">Back up now</button></div>`:''}
-        ${saveOk?'':`<div class="alarm"><b>Not saved</b>
+        ${(!RO()&&!saveOk)?`<div class="alarm"><b>Not saved</b>
           The server could not be reached, so your latest changes exist only on this screen. They are kept and
           re-sent with your next save — don't close this page yet.
-          <button class="act" id="retry" style="margin-top:9px">Retry now</button></div>`}
-        ${(!hasFloor()||editing)?cfgPanel():''}
+          <button class="act" id="retry" style="margin-top:9px">Retry now</button></div>`:''}
+        ${RO()&&!hasFloor()?`<div class="cfg"><h4>No data yet</h4><p>This user has not completed their setup.</p></div>`
+          :(!RO()&&(!hasFloor()||editing))?cfgPanel():''}
         ${tab==='home'?viewHome(st,daily,runway,bDays):tab==='day'?viewDay(st,daily,runway,bDays):tab==='review'?viewReview(st):tab==='year'?viewYear(st):viewPlan(st)}
         <div class="tools">
-          <button id="exp">Export CSV</button><button id="bak">Backup (JSON)</button>
+          <button id="exp">Export CSV</button>${RO()?`<button class="backAdminBtn">Back to my ledger</button>`:`
+          <button id="bak">Backup (JSON)</button>
           <button id="imp">Restore</button><button id="edit">Settings &amp; people</button>
           <button id="acct">Account</button>${me.role==='admin'?'<button id="usr">Users</button>':''}
           <button id="out">Log out</button>
-          <button id="reset" class="danger">Erase all</button>
+          <button id="reset" class="danger">Erase all</button>`}
           <input type="file" id="impf" accept="application/json,.json" style="display:none"/></div>
       </div>
       <div class="tblock">
@@ -1458,7 +1513,8 @@ input,button,select,textarea{touch-action:manipulation}
     const isZero=db.zero.indexOf(k)>=0;
 
     return `
-      ${(()=>{const bp=blankPastDays();return bp.length?`<div class="alarm" style="border-color:var(--chalk)">
+      ${(()=>{if(RO()) return '';
+        const bp=blankPastDays();return bp.length?`<div class="alarm" style="border-color:var(--chalk)">
         <b style="color:var(--chalk)">${bp.length} blank day${bp.length===1?'':'s'} before today</b>
         These days have nothing logged — they are holes, not zeros. If a day was genuinely no-spend, mark it so the
         Plan tab counts it. Only do this for days you are sure about.
@@ -1477,25 +1533,25 @@ input,button,select,textarea{touch-action:manipulation}
       </div>
 
       <div class="cap-row">
-        <button class="big inflow ${mode==='in'?'on':''}" id="m_in" ${isFuture?'disabled':''}>+ Earned</button>
-        <button class="big xfer ${mode==='xfer'?'on':''}" id="m_xf" ${isFuture?'disabled':''}>⇄ Transfer</button>
-        <button class="big outflow ${mode==='out'?'on':''}" id="m_out" ${isFuture?'disabled':''}>− Spent</button>
+        <button class="big inflow ${mode==='in'?'on':''}" id="m_in" ${isFuture||RO()?'disabled':''}>+ Earned</button>
+        <button class="big xfer ${mode==='xfer'?'on':''}" id="m_xf" ${isFuture||RO()?'disabled':''}>⇄ Transfer</button>
+        <button class="big outflow ${mode==='out'?'on':''}" id="m_out" ${isFuture||RO()?'disabled':''}>− Spent</button>
       </div>
       <div class="cap-row2">
-        <button class="sm ${mode==='pin'?'on':''}" id="m_pi" ${isFuture?'disabled':''}>⊕ From a person</button>
-        <button class="sm ${mode==='pout'?'on':''}" id="m_po" ${isFuture?'disabled':''}>⊖ To a person</button>
+        <button class="sm ${mode==='pin'?'on':''}" id="m_pi" ${isFuture||RO()?'disabled':''}>⊕ From a person</button>
+        <button class="sm ${mode==='pout'?'on':''}" id="m_po" ${isFuture||RO()?'disabled':''}>⊖ To a person</button>
       </div>
 
-      ${mode?formHTML(st):frequentHTML()}
+      ${mode&&!RO()?formHTML(st):(RO()?'':frequentHTML())}
 
       ${spent?`<div class="sec"><h3><span>Essential vs choice</span><em>${fmt(spent)}</em></h3>
         ${groupBars(byGroup(on(k)),spent)}</div>`:''}
 
       <div class="sec"><h3><span>Entries</span><em>${list.length}</em></h3>
         ${list.length?list.map(rowHTML).join(''):
-          isZero?`<div class="zbadge"><span>✓ No-spend day recorded</span><button id="unzero">Undo</button></div>`
+          isZero?`<div class="zbadge"><span>✓ No-spend day recorded</span>${RO()?'':'<button id="unzero">Undo</button>'}</div>`
                 :`<div class="empty">Nothing logged for this day.<br/>A blank day and a zero day are not the same thing.</div>
-                  ${!isFuture?`<button class="zbtn" id="zero">Mark this as a no-spend day</button>`:''}`}
+                  ${(!isFuture&&!RO())?`<button class="zbtn" id="zero">Mark this as a no-spend day</button>`:''}`}
       </div>`;
   }
 
@@ -1770,8 +1826,8 @@ input,button,select,textarea{touch-action:manipulation}
     const isEd=editId===e.id;
     const na=(e.att||[]).length;
     const ctl=(na?`<button class="attb" data-att="${e.id}" title="Attachments">📎${na>1?na:''}</button>`:'')+
-      `<button class="edt${isEd?' on':''}" data-edit="${e.id}" title="Edit">✎</button>
-      <button class="del" data-del="${e.id}" title="Delete">×</button>`;
+      (RO()?'':`<button class="edt${isEd?' on':''}" data-edit="${e.id}" title="Edit">✎</button>
+      <button class="del" data-del="${e.id}" title="Delete">×</button>`);
     const feeTag=e.fee>0?` · <span style="color:var(--red)">fee ${fmt(e.fee)}</span>`:'';
     if(e.type==='xfer') return `<div class="row${isEd?' editing':''}"><div class="d">${dt}</div>
       <div class="t">${esc(e.from)} → ${esc(e.to)}<small>Transfer · not income${feeTag}</small></div>
@@ -2276,7 +2332,11 @@ input,button,select,textarea{touch-action:manipulation}
     if($('out'))  $('out').onclick=()=>{ if(confirm('Log out of this device?')) signOut(''); };
     if($('acct')) $('acct').onclick=()=>{ panel='acct'; panelErr=''; render(); };
     if($('usr'))  $('usr').onclick=openUsers;
-    const closePanel=()=>{ panel=null; attView=null; newCred=null; render(); };
+    if($('u_audit')) $('u_audit').onclick=openAudit;
+    document.querySelectorAll('[data-uview]').forEach(x=>{x.onclick=()=>{
+      const u=usersList.find(v=>v.id===x.dataset.uview); if(u) enterViewAs(u);};});
+    document.querySelectorAll('.backAdminBtn').forEach(x=>{x.onclick=exitViewAs;});
+    const closePanel=()=>{ panel=null; attView=null; newCred=null; auditList=null; render(); };
     if($('p_x')) $('p_x').onclick=closePanel;
     if($('ovlp')) $('ovlp').onclick=e=>{ if(e.target.id==='ovlp') closePanel(); };
     if($('a_go')) $('a_go').onclick=async()=>{
@@ -2354,9 +2414,9 @@ input,button,select,textarea{touch-action:manipulation}
       URL.revokeObjectURL(url);
     };
     const openBackup=()=>{ showBackup=true; showRestore=false; render(); };
-    $('bak').onclick=openBackup;
+    if($('bak')) $('bak').onclick=openBackup;
     if($('baknow')) $('baknow').onclick=openBackup;
-    $('imp').onclick=()=>{ showRestore=true; showBackup=false; render(); };
+    if($('imp')) $('imp').onclick=()=>{ showRestore=true; showBackup=false; render(); };
 
     // ---- backup overlay ----
     if($('bk_x'))  $('bk_x').onclick=()=>{ showBackup=false; render(); };
@@ -2396,8 +2456,8 @@ input,button,select,textarea{touch-action:manipulation}
       r.onload=()=>applyRestore(r.result,true);
       r.readAsText(f);
     };
-    $('edit').onclick=()=>{editing=true;cfgErr='';cfg=null;tab='day';render();window.scrollTo(0,0);};
-    $('reset').onclick=async()=>{
+    if($('edit')) $('edit').onclick=()=>{editing=true;cfgErr='';cfg=null;tab='day';render();window.scrollTo(0,0);};
+    if($('reset')) $('reset').onclick=async()=>{
       if(!confirm('Erase everything and start over? This cannot be undone.')) return;
       db={setup:{floor:0,bufferMonths:3,opening:{},envStart:null},entries:[],zero:[],people:[]};
       ACCOUNTS.forEach(a=>db.setup.opening[a]=0);

@@ -155,6 +155,49 @@ let n = 0; const ok = (m) => { n++; console.log('  ok  ' + m); };
   assert.strictEqual(J(g.rpc('load', admin.token, {})).data.doc.entries.length, 0);
   ok("admin's own ledger is separate from alice's");
 
+  // --- admin "view as" (read-only), isolation, and audit trail ---
+  await ap.click('#p_x');                                     // close Users panel from the earlier block
+  await ap.waitForSelector('#usr');
+  await ap.click('#usr'); await ap.waitForSelector('.urow');
+  const aliceRow = ap.locator('.urow', { hasText: 'alice' });
+  await aliceRow.locator('[data-uview]').click();
+  await ap.waitForFunction(() => document.getElementById('root').textContent.includes('Read-only'));
+  assert.ok(/alice/i.test(await ap.textContent(".alarm")));
+  await ap.waitForFunction(() => document.querySelectorAll('.row').length > 0);
+  ok("admin opens alice's ledger read-only and sees her real entries");
+
+  assert.strictEqual(await ap.$('#m_in'), null);
+  assert.strictEqual(await ap.$('.row .edt'), null);
+  assert.strictEqual(await ap.$('.row .del'), null);
+  assert.strictEqual(await ap.$('#edit'), null);
+  assert.strictEqual(await ap.$('#imp'), null);
+  assert.strictEqual(await ap.$('#reset'), null);
+  assert.strictEqual(await ap.$('#usr'), null);
+  ok('while viewing, every mutating control is gone — no entry, edit, delete, settings or admin action is possible');
+
+  const beforeCount = J(g.rpc('load', al.token, {})).data.doc.entries.length;
+  await ap.click('.backAdminBtn');
+  await ap.waitForFunction(() => !document.getElementById('root').textContent.includes('Read-only'));
+  await new Promise((r) => setTimeout(r, 300));
+  assert.strictEqual(J(g.rpc('load', al.token, {})).data.doc.entries.length, beforeCount);
+  ok("leaving the view changes nothing in alice's ledger");
+
+  assert.strictEqual(J(g.rpc('load', admin.token, {})).data.doc.entries.length, 0);
+  ok("back in admin's own ledger, which is still empty and separate from alice's");
+
+  await ap.click('#usr'); await ap.waitForSelector('.urow');
+  await ap.click('#u_audit');
+  await ap.waitForSelector('.arow');
+  const auditText = await ap.textContent('.card');
+  assert.ok(/admin.*viewed ledger.*alice|admin.*alice.*viewed ledger/i.test(auditText.replace(/\s+/g, ' ')), auditText);
+  ok("the view is recorded in the admin's own audit log");
+  await ap.click('#p_x');
+
+  // a non-admin cannot reach adminLoad even if they knew the id
+  const rawAlice = J(g.rpc('adminLoad', al.token, { userId: admin.user.id }));
+  assert.strictEqual(rawAlice.code, 'FORBIDDEN');
+  ok('server refuses a non-admin adminLoad call outright (defense in depth beyond the hidden UI)');
+
   await page.click('#out'); await page.waitForSelector('#l_go');
   assert.strictEqual(await page.evaluate(() => localStorage.getItem('birrledger:token')), null);
   ok('log out clears the token');

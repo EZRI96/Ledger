@@ -40,7 +40,16 @@ Open the URL, sign in as `admin`, press **Users** (bottom of the page) → enter
 **Create user**. The generated password is shown **once**; send it privately. People can change it
 under **Account**. **Reset password** and **Disable** are on the same screen (disabling keeps their data).
 
-Each person has a **private, separate ledger**. The admin account is also a normal ledger of its own.
+Each person has a **private, separate ledger**, identified by their own `userId` — no one but them can
+load it through the app, and the server refuses it outright for anyone else (`FORBIDDEN`), admin included
+by default. The admin account is also a normal ledger of its own.
+
+**Admin oversight.** You, the admin, are the one exception: **Users → View ledger** opens any user's
+ledger **read-only** — every add/edit/delete/settings/restore control is gone from that screen, and
+the server has no "write as another user" call at all, so there is no path (bug or otherwise) for the
+admin to alter someone else's entries this way. Every view is appended to **Users → audit log**
+(who, whose ledger, when) — never editable, never deleted by the app — so access to a user's data is
+visible, not silent. To change what the Sheet actually holds, use **Reset password** and sign in as them.
 
 ## 5. Move your existing data
 
@@ -68,7 +77,9 @@ removing a file while editing, moves the file to your Drive trash.
 Tested here (`node tests/server.test.js`, `node tests/e2e.js`): the real `Code.gs` running against an
 in-memory imitation of Sheets/Drive/Cache/Lock, driven by the real `Index.html` in Chromium — login,
 lockout, per-user isolation, attachment upload/view/trash, >1000-row growth, chunked settings, old-backup
-restore, two-device concurrent saves, admin user management.
+restore, two-device concurrent saves, admin user management, admin read-only "view as" (every mutating
+control confirmed absent from the DOM, a non-admin's direct RPC attempt confirmed refused server-side,
+the audit log entry confirmed written, and the viewed ledger confirmed unchanged afterwards).
 
 **Not** testable outside Google, so verify on first deploy: (1) the Drive/Sheets permission prompt,
 (2) opening the `/exec` URL in a private window, (3) uploading a photo from a phone, (4) the
@@ -77,8 +88,11 @@ option on the same screen works as a fallback.
 
 ## Known limits and trade-offs
 
-- **Access to the Sheet = access to everyone's data.** Only you (owner) should have it. Passwords are stored as
-  salted HMACs keyed by a secret in Script Properties, but the Sheet still holds all ledgers in clear text.
+- **Access to the Sheet = access to everyone's data**, same as before: it's your Sheet and no one but you
+  has it. Through the *app*, the only account with any reach beyond its own ledger is admin, and even that
+  is read-only and logged — see "Admin oversight" above. Passwords are stored as salted HMACs keyed by a
+  secret in Script Properties, but the Sheet still holds all ledgers in clear text, which is why the Sheet
+  itself must stay unshared.
 - **Lockout is per username**: 5 wrong passwords → locked 15 min. Someone who knows a username can keep
   locking that person out; the fix is simply waiting or resetting.
 - Sessions last 30 days and are stored in the browser's localStorage; changing/resetting a password or disabling

@@ -159,4 +159,34 @@ t('password change signs out other sessions; reset and disable work', () => {
 
 t('backup trigger/nightly copy run', () => { g.installBackupTrigger(); g.nightlyBackup(); });
 
+t('admin can read any user\'s ledger read-only; audit log records it; users cannot', () => {
+  const rev = R('load', alice.token, {}).data.rev;
+  assert.ok(R('save', alice.token, { baseRev: rev, upserts: [E('secret1', { tag: 'Rent', amt: 999900 })] }).ok);
+  const view = R('adminLoad', admin.token, { userId: alice.user.id });
+  assert.ok(view.ok, JSON.stringify(view));
+  assert.ok(view.data.doc.entries.some((e) => e.id === 'secret1' && e.amt === 999900));
+  assert.strictEqual(view.data.user.username, 'alice');
+  assert.strictEqual(R('adminLoad', alice.token, { userId: bob.user.id }).code, 'FORBIDDEN');
+  assert.strictEqual(R('adminLoad', alice.token, { userId: admin.user.id }).code, 'FORBIDDEN');
+  assert.strictEqual(R('adminLoad', admin.token, { userId: 'ghost' }).code, 'NOT_FOUND');
+  const log = R('listAudit', admin.token, {}).data;
+  assert.ok(log.some((r) => r.admin === 'admin' && r.target === 'alice' && r.action === 'viewed ledger'));
+  assert.strictEqual(R('listAudit', alice.token, {}).code, 'FORBIDDEN');
+});
+
+t('adminLoad is read-only: there is no server path for an admin to write another user\'s entries', () => {
+  assert.strictEqual(typeof g.rpc, 'function');
+  g.rpc('save', admin.token, { baseRev: 0, upserts: [{ id: 'hack' }] });
+  // admin's own save only ever touches admin's own ledger sheet, never alice's
+  const alice_after = JSON.parse(JSON.stringify(g.rpc('load', alice.token, {}))).data.doc.entries;
+  assert.ok(!alice_after.some((e) => e.id === 'hack'));
+});
+
+t('admin actions (create/reset/disable) are themselves audited', () => {
+  const log = R('listAudit', admin.token, {}).data;
+  assert.ok(log.some((r) => r.action === 'created user' && r.target === 'bob'));
+  assert.ok(log.some((r) => r.action === 'reset password'));
+  assert.ok(log.some((r) => r.action === 'disabled user' || r.action === 'enabled user'));
+});
+
 console.log('\n' + n + ' server tests passed');

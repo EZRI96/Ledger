@@ -24,6 +24,8 @@ const CFG = {
 };
 
 const USER_COLS = ['userId', 'username', 'name', 'role', 'salt', 'hash', 'active', 'tokenVer', 'rev', 'folderId', 'createdAt'];
+const AUDIT_COLS = ['ts', 'adminUsername', 'targetUsername', 'action'];
+const AUDIT_KEEP = 500;
 
 // ---------------------------------------------------------------- web app entry
 
@@ -44,12 +46,14 @@ function rpc(method, token, args) {
     const user = auth_(token);
     switch (method) {
       case 'load':           return ok_(load_(user));
+      case 'adminLoad':      requireAdmin_(user); return ok_(adminLoad_(user, args));
+      case 'listAudit':      requireAdmin_(user); return ok_(listAudit_());
       case 'save':           return save_(user, args);
       case 'upload':         return ok_(upload_(user, args));
       case 'file':           return ok_(getFile_(user, args));
       case 'changePassword': return ok_(changePassword_(user, args));
       case 'listUsers':      requireAdmin_(user); return ok_(listUsers_());
-      case 'createUser':     requireAdmin_(user); return ok_(createUser_(args));
+      case 'createUser':     requireAdmin_(user); return ok_(createUser_(user, args));
       case 'resetPassword':  requireAdmin_(user); return ok_(resetPassword_(user, args));
       case 'setActive':      requireAdmin_(user); return ok_(setActive_(user, args));
       default: throw err_('BAD_METHOD', 'Unknown method.');
@@ -82,6 +86,10 @@ function setup() {
   meta.getRange(1, 1, 1, 3).setValues([['userId', 'part', 'chunk']]);
   meta.getRange(1, 1, meta.getMaxRows(), 3).setNumberFormat('@');
   meta.setFrozenRows(1);
+  const audit = ss.insertSheet('AuditLog');
+  audit.getRange(1, 1, 1, AUDIT_COLS.length).setValues([AUDIT_COLS]);
+  audit.getRange(1, 1, audit.getMaxRows(), AUDIT_COLS.length).setNumberFormat('@');
+  audit.setFrozenRows(1);
 
   const root = DriveApp.createFolder(CFG.APP_NAME + ' — attachments (do not share)');
   const backups = DriveApp.createFolder(CFG.APP_NAME + ' — sheet backups');
@@ -215,7 +223,7 @@ function listUsers_() {
   });
 }
 
-function createUser_(a) {
+function createUser_(admin, a) {
   const username = normUsername_(a.username);
   if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
     throw err_('INVALID', 'Username: 3–30 characters, letters, digits, dot, dash or underscore.');
@@ -225,6 +233,7 @@ function createUser_(a) {
     if (findUserByName_(username)) throw err_('EXISTS', 'That username is taken.');
     const pw = generatePassword_();
     const u = addUserRow_(username, name, 'user', pw);
+    audit_(admin, u, 'created user');
     return { user: publicUser_(u), password: pw };
   });
 }
@@ -235,6 +244,7 @@ function resetPassword_(admin, a) {
     if (!u) throw err_('NOT_FOUND', 'No such user.');
     const pw = generatePassword_();
     setPassword_(u.userId, pw);
+    audit_(admin, u, 'reset password');
     return { password: pw };
   });
 }
@@ -245,6 +255,7 @@ function setActive_(admin, a) {
     if (!u) throw err_('NOT_FOUND', 'No such user.');
     if (u.userId === admin.userId) throw err_('INVALID', 'You cannot disable yourself.');
     setUserFields_(u.userId, { active: a.active ? 'yes' : 'no', tokenVer: Number(u.tokenVer) + 1 });
+    audit_(admin, u, a.active ? 'enabled user' : 'disabled user');
     return { ok: true };
   });
 }
@@ -364,6 +375,39 @@ function load_(user) {
     try { return JSON.parse(r[1]); } catch (e) { return null; }
   }).filter(Boolean);
   return { doc: doc, rev: Number(user.rev), user: publicUser_(user) };
+}
+
+/**
+ * Admin-only, read-only view of another user's ledger. Never accepts writes for that user — there
+ * is no "adminSave": an admin who wants to change someone's entries signs in as them via reset
+ * password. Every call is appended to AuditLog so a look is never silent.
+ */
+function adminLoad_(admin, a) {
+  const target = findUserById_(String(a.userId || ''));
+  if (!target) throw err_('NOT_FOUND', 'No such user.');
+  const doc = readMeta_(target.userId);
+  doc.entries = readEntryRows_(ledgerSheet_(target.userId)).map(function (r) {
+    try { return JSON.parse(r[1]); } catch (e) { return null; }
+  }).filter(Boolean);
+  audit_(admin, target, 'viewed ledger');
+  return { doc: doc, rev: Number(target.rev), user: publicUser_(target) };
+}
+
+function listAudit_() {
+  const sh = auditSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(Math.max(2, last - AUDIT_KEEP + 1), 1, last - Math.max(2, last - AUDIT_KEEP + 1) + 1, AUDIT_COLS.length)
+    .getValues().map(function (r) { return { ts: r[0], admin: r[1], target: r[2], action: r[3] }; })
+    .reverse();
+}
+
+function auditSheet_() { return SpreadsheetApp.openById(prop_('SHEET_ID')).getSheetByName('AuditLog'); }
+
+/** Append-only; never edited or deleted from the app, so it stays a trustworthy record of admin access. */
+function audit_(admin, target, action) {
+  const sh = auditSheet_();
+  writeRows_(sh, sh.getLastRow() + 1, [[new Date().toISOString(), admin.username, target.username, action]], AUDIT_COLS.length);
 }
 
 /**
