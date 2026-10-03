@@ -2,7 +2,10 @@
 
 ## 1. Create the Apps Script project (≈10 min)
 
-1. Sign in to the Google account that will **own** the data, open <https://script.google.com> → **New project**.
+1. Sign in to the Google account that will **own** the data — for this project, **`sideincome1m@gmail.com`**
+   — open <https://script.google.com> → **New project**. Everything (the Sheet, the Drive folders, the
+   deployment) ends up owned by whichever account is signed in here, so use that account throughout this
+   whole setup, not a personal one.
 2. Rename it "Birr Ledger".
 3. Project Settings (⚙) → tick **Show "appsscript.json" manifest file in editor**.
 4. Replace the contents of the three files with the ones in `apps-script/`:
