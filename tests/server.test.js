@@ -157,9 +157,11 @@ t('password change signs out other sessions; reset and disable work', () => {
   assert.strictEqual(R('setActive', admin.token, { userId: admin.user.id, active: false }).code, 'INVALID');
 });
 
-t('doGet() renders without throwing (catches invalid addMetaTag names, wrong file name, etc.)', () => {
+t('doGet() renders without throwing and sets the meta tags Apps Script actually allows', () => {
   const out = g.doGet();
   assert.ok(out.getContent().includes('Birr Ledger'));
+  assert.deepStrictEqual(out._metas, { viewport: 'width=device-width, initial-scale=1, viewport-fit=cover', 'mobile-web-app-capable': 'yes', 'apple-mobile-web-app-capable': 'yes' });
+  assert.strictEqual(out._title, 'Birr Ledger');
 });
 
 t('backup trigger/nightly copy run', () => { g.installBackupTrigger(); g.nightlyBackup(); });

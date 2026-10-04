@@ -73,17 +73,18 @@ function loadServer() {
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Session: { getScriptTimeZone: () => 'Africa/Addis_Ababa' },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create() {} }) }) }) }) },
-    // Real Apps Script: addMetaTag only accepts 'viewport' and 'theme-color' and throws
-    // "The meta tag that you've specified is not allowed in this context" for anything else —
-    // that's what caught the mobile-web-app-capable bug; keep enforcing it so it can't recur.
+    // Real Apps Script: addMetaTag only accepts these four names and throws "The meta tag that
+    // you've specified is not allowed in this context" for anything else (confirmed against
+    // Google's docs after guessing wrong once — 'theme-color' is NOT on the list).
     HtmlService: {
       createHtmlOutputFromFile(name) {
+        const ALLOWED = ['viewport', 'mobile-web-app-capable', 'apple-mobile-web-app-capable', 'google-site-verification'];
         const html = fs.readFileSync(path.join(__dirname, '../apps-script/', name + '.html'), 'utf8');
         const out = {
           _title: null, _metas: {},
           setTitle(t) { out._title = t; return out; },
           addMetaTag(tag, content) {
-            if (tag !== 'viewport' && tag !== 'theme-color') {
+            if (!ALLOWED.includes(tag)) {
               throw new Error("The meta tag that you've specified is not allowed in this context.");
             }
             out._metas[tag] = content; return out;
