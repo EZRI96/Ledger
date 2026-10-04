@@ -157,6 +157,11 @@ t('password change signs out other sessions; reset and disable work', () => {
   assert.strictEqual(R('setActive', admin.token, { userId: admin.user.id, active: false }).code, 'INVALID');
 });
 
+t('doGet() renders without throwing (catches invalid addMetaTag names, wrong file name, etc.)', () => {
+  const out = g.doGet();
+  assert.ok(out.getContent().includes('Birr Ledger'));
+});
+
 t('backup trigger/nightly copy run', () => { g.installBackupTrigger(); g.nightlyBackup(); });
 
 t('admin can read any user\'s ledger read-only; audit log records it; users cannot', () => {

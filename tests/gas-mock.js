@@ -73,7 +73,26 @@ function loadServer() {
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     Session: { getScriptTimeZone: () => 'Africa/Addis_Ababa' },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create() {} }) }) }) }) },
-    HtmlService: {},
+    // Real Apps Script: addMetaTag only accepts 'viewport' and 'theme-color' and throws
+    // "The meta tag that you've specified is not allowed in this context" for anything else —
+    // that's what caught the mobile-web-app-capable bug; keep enforcing it so it can't recur.
+    HtmlService: {
+      createHtmlOutputFromFile(name) {
+        const html = fs.readFileSync(path.join(__dirname, '../apps-script/', name + '.html'), 'utf8');
+        const out = {
+          _title: null, _metas: {},
+          setTitle(t) { out._title = t; return out; },
+          addMetaTag(tag, content) {
+            if (tag !== 'viewport' && tag !== 'theme-color') {
+              throw new Error("The meta tag that you've specified is not allowed in this context.");
+            }
+            out._metas[tag] = content; return out;
+          },
+          getContent: () => html,
+        };
+        return out;
+      },
+    },
     Utilities: {
       DigestAlgorithm: { SHA_256: 'sha256' },
       computeDigest: (_a, v) => signed(crypto.createHash('sha256').update(toBuf(v)).digest()),

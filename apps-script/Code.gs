@@ -30,11 +30,13 @@ const AUDIT_KEEP = 500;
 // ---------------------------------------------------------------- web app entry
 
 function doGet() {
+  // Apps Script's addMetaTag only accepts 'viewport' and 'theme-color' — anything else throws
+  // "meta tag ... not allowed in this context". The rest of the tags (mobile-web-app-capable etc.)
+  // are already written directly into Index.html's own <head>, so nothing is lost by not adding
+  // them here too.
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(CFG.APP_NAME)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .addMetaTag('mobile-web-app-capable', 'yes')
-    .addMetaTag('apple-mobile-web-app-capable', 'yes')
     .addMetaTag('theme-color', '#0F1418');
 }
 
