@@ -10,5 +10,6 @@ access to the Sheet, the Drive folder or the script.
 | `apps-script/Index.html` | The app (your original HTML, now server-backed) |
 | `apps-script/appsscript.json` | Manifest: runs as you, public URL, Sheets + Drive scopes |
 | `original/birr-ledger.html` | Your original single-file version (use it to export old data) |
+| `docs/` | Installable launcher page (GitHub Pages) — the link to actually hand out |
 | `tests/` | Server tests (Sheets/Drive mocked) and a real-browser end-to-end test |
 | `SETUP.md` | Deploy + migrate, step by step |

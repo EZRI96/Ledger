@@ -31,14 +31,38 @@
 - Who has access: **Anyone**  ← this only means "no Google sign-in needed to open the page".
   Nobody can see data without an app username + password.
 
-Copy the **Web app URL** — that is the link you give people.
+Copy the **Web app URL** — you'll need it in the next section. Don't hand this one out directly;
+see **"The link to actually share"** below.
 
 Changing code later: **Deploy → Manage deployments → ✎ → Version: New version → Deploy**
-(a brand-new deployment gets a new URL).
+(a brand-new deployment gets a new URL — if that happens, update `docs/index.html`'s `APP_URL`
+to match and push it).
+
+## 3b. The link to actually share (installable, works the same on any phone)
+
+Apps Script forces its web apps into a sandbox that blocks real "Install to home screen" support,
+so opening the raw Web app URL directly never offers a consistent Install button — it varies by
+browser, and some hide it entirely. `docs/` is a small separate launcher page that sits outside
+that sandbox and *is* a real installable app on any phone/browser; it just hands off to the Web app
+URL above once opened.
+
+1. In `docs/index.html`, set `const APP_URL = "..."` to the Web app URL from step 3.
+2. Commit and push.
+3. In the GitHub repository's settings: **Settings → Pages** → Source: **Deploy from a branch** →
+   pick this branch and the **`/docs`** folder → **Save**. (GitHub Pages on the free plan requires
+   the repository to be public — nothing secret lives in this code; the real secret, generated
+   by `setup()`, lives only in Script Properties inside your Google account, never in the repo.)
+4. GitHub publishes a URL like `https://<your-github-username>.github.io/<repo-name>/`.
+   **This is the link to give people** — not the raw Web app URL.
+
+Opening it shows an **Open Ledger** button (works immediately, no install needed) and, where the
+browser supports it, an **Install App** button that adds a real home-screen icon. iOS Safari has no
+install-prompt API at all (Apple doesn't support it), so there it shows instructions instead:
+Share → Add to Home Screen.
 
 ## 4. Add people
 
-Open the URL, sign in as `admin`, press **Users** (bottom of the page) → enter name + username →
+Open your GitHub Pages link, sign in as `admin`, press **Users** (bottom of the page) → enter name + username →
 **Create user**. The generated password is shown **once**; send it privately. People can change it
 under **Account**. **Reset password** and **Disable** are on the same screen (disabling keeps their data).
 
