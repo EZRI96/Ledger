@@ -660,6 +660,38 @@ input,button,select,textarea{touch-action:manipulation}
   // (and the theme) in localStorage — both optional: if storage is blocked you just sign in each visit.
   const TOKENKEY='birrledger:token';
   let token=null, me=null, rev=0, saved={entries:new Map(),meta:'{}'};
+  // ---------- idle sign-out (10 min) ----------
+  // Privacy: a phone left unlocked with this open stays signed in forever unless something times it
+  // out. lastActivity is kept in localStorage (not just a JS variable) so the clock survives a full
+  // page reload or the app being suspended in the background and resumed later — on boot, and on
+  // returning to the tab, we check real elapsed time before ever rendering a signed-in user's data.
+  const IDLE_KEY='birrledger:lastActivity', IDLE_LIMIT_MS=10*60*1000;
+  let lastActivity=Date.now(), lastActivityWrite=0, idleCheckHandle=null, idleListenersBound=false;
+  function markActivity(){
+    const now=Date.now(); lastActivity=now;
+    if(now-lastActivityWrite>3000){ lastActivityWrite=now; lsSet(IDLE_KEY,String(now)); }  // throttle disk writes
+  }
+  function checkIdle(){
+    if(!token) return;
+    const stored=Number(lsGet(IDLE_KEY))||0;
+    if(Date.now()-Math.max(lastActivity,stored) >= IDLE_LIMIT_MS){
+      signOut('Signed out after 10 minutes of inactivity, for your privacy.');
+    }
+  }
+  function startIdleWatch(){
+    markActivity();
+    if(!idleListenersBound){
+      ['click','keydown','touchstart','scroll'].forEach(ev=>document.addEventListener(ev,markActivity,{passive:true}));
+      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkIdle(); });
+      idleListenersBound=true;
+    }
+    if(idleCheckHandle) clearInterval(idleCheckHandle);
+    idleCheckHandle=setInterval(checkIdle,15000);
+  }
+  function stopIdleWatch(){
+    if(idleCheckHandle){ clearInterval(idleCheckHandle); idleCheckHandle=null; }
+    lsDel(IDLE_KEY);
+  }
   const lsGet=k=>{ try{ return window.localStorage.getItem(k); }catch(e){ return null; } };
   const lsSet=(k,v)=>{ try{ window.localStorage.setItem(k,v); }catch(e){} };
   const lsDel=k=>{ try{ window.localStorage.removeItem(k); }catch(e){} };
@@ -769,6 +801,8 @@ input,button,select,textarea{touch-action:manipulation}
 
   function signOut(msg){
     token=null; me=null; db=null; mode=null; draft={}; editId=null; panel=null; attView=null; usersList=null; newCred=null;
+    viewAs=null; myDb=null; myMe=null; myRev=0; mySaved=null;
+    stopIdleWatch();
     lsDel(TOKENKEY);
     fileCache.forEach(f=>URL.revokeObjectURL(f.url)); fileCache.clear();
     renderLogin(msg||'');
@@ -882,6 +916,7 @@ input,button,select,textarea{touch-action:manipulation}
     sel=today(); tab='home'; mode=null; draft={}; editId=null; panel=null;
     if(db.setup.floor>0) await save();
     render();
+    startIdleWatch();
   }
 
   function panelSheet(){
@@ -2555,6 +2590,14 @@ input,button,select,textarea{touch-action:manipulation}
     const th=lsGet(THEMEKEY); if(th==='vellum'||th==='viewport') theme=th;
     token=lsGet(TOKENKEY);
     if(!token){ renderLogin(''); return; }
+    // Idle check happens BEFORE loading any data: a reload/resume after the device sat untouched
+    // past the limit must never flash a signed-in user's ledger, even for a moment.
+    const stored=Number(lsGet(IDLE_KEY));
+    if(stored && (Date.now()-stored)>=IDLE_LIMIT_MS){
+      token=null; lsDel(TOKENKEY); lsDel(IDLE_KEY);
+      renderLogin('Signed out after 10 minutes of inactivity, for your privacy.');
+      return;
+    }
     document.getElementById('root').innerHTML='<div class="sheet"><p style="color:var(--graphite);font-family:var(--mono)">Loading…</p></div>';
     await enter(null);
   })();

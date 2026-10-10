@@ -122,7 +122,9 @@ option on the same screen works as a fallback.
 - **Lockout is per username**: 5 wrong passwords → locked 15 min. Someone who knows a username can keep
   locking that person out; the fix is simply waiting or resetting.
 - Sessions last 30 days and are stored in the browser's localStorage; changing/resetting a password or disabling
-  a user signs them out everywhere.
+  a user signs them out everywhere. Separately, **10 minutes with no taps/clicks/scrolling auto-signs out that
+  one device** (not the whole session) — meant for a phone left unlocked and unattended. It's enforced on reload
+  too, so coming back to an idle device never flashes anyone's data before bouncing to the sign-in screen.
 - Same-device conflicts: entries merge by id across devices. Settings/people edits are last-writer-wins, and a
   stale device is told to reload instead of overwriting.
 - Free Google accounts have daily Apps Script quotas (~90 min runtime/day) — ample for 10 people logging a few

@@ -198,6 +198,45 @@ let n = 0; const ok = (m) => { n++; console.log('  ok  ' + m); };
   assert.strictEqual(rawAlice.code, 'FORBIDDEN');
   ok('server refuses a non-admin adminLoad call outright (defense in depth beyond the hidden UI)');
 
+  // --- idle sign-out (10 min), path 1: a stale session is caught on load, before anything renders ---
+  const daveUser = 'dave' + Date.now();
+  const davePw = mk(daveUser);
+  const dctx = await browser.newContext({ viewport: { width: 420, height: 900 } });
+  await dctx.addInitScript(SHIM);
+  const dp = await dctx.newPage();
+  dp.on('dialog', (d) => d.accept());
+  dp.on('pageerror', (e) => errors.push(String(e)));
+  await dp.goto(url);
+  await dp.fill('#l_u', daveUser); await dp.fill('#l_p', davePw); await dp.click('#l_go');
+  await dp.waitForSelector('.nav');
+  await dp.evaluate(() => localStorage.setItem('birrledger:lastActivity', String(Date.now() - 11 * 60 * 1000)));
+  await dp.reload();
+  await dp.waitForSelector('#l_go');
+  assert.ok((await dp.textContent('#l_err')).includes('10 minutes'));
+  assert.strictEqual(await dp.evaluate(() => localStorage.getItem('birrledger:token')), null);
+  ok('reopening after 10+ idle minutes signs out before any ledger data renders, even on reload/resume');
+  await dp.close();
+
+  // --- idle sign-out, path 2: fires live during an open session; real activity resets the clock ---
+  const cctx = await browser.newContext({ viewport: { width: 420, height: 900 } });
+  await cctx.addInitScript(SHIM);
+  const cp = await cctx.newPage();
+  cp.on('dialog', (d) => d.accept());
+  cp.on('pageerror', (e) => errors.push(String(e)));
+  await cp.clock.install({ time: Date.now() });
+  await cp.goto(url);
+  await cp.fill('#l_u', daveUser); await cp.fill('#l_p', davePw); await cp.click('#l_go');
+  await cp.waitForSelector('.nav');
+  await cp.clock.fastForward('09:00');                 // 9 min idle: under the limit
+  await cp.click('.nav button[data-t="day"]');          // real activity: resets the clock
+  await cp.clock.fastForward('09:00');                  // 9 more min since that click: still under
+  assert.ok(await cp.$('.nav'), 'should still be signed in after activity reset the idle clock');
+  await cp.clock.fastForward('02:00');                  // now 11 min since the last activity
+  await cp.waitForSelector('#l_go', { timeout: 5000 });
+  assert.ok((await cp.textContent('#l_err')).includes('10 minutes'));
+  ok('10 minutes with zero activity signs out automatically; activity in between postpones it');
+  await cp.close();
+
   await page.click('#out'); await page.waitForSelector('#l_go');
   assert.strictEqual(await page.evaluate(() => localStorage.getItem('birrledger:token')), null);
   ok('log out clears the token');
