@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#0F1418"/>
+<title>Birr Ledger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230F1418'/%3E%3Cpath d='M6 22 L26 22 M6 22 l4 -2 v4 z M26 22 l-4 -2 v4 z' stroke='%235FB8DC' stroke-width='1.6' fill='%235FB8DC'/%3E%3Ctext x='16' y='15' font-family='monospace' font-size='11' font-weight='700' fill='%23E9EEEB' text-anchor='middle'%3EBR%3C/text%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"/>
+</head>
+<body>
+<div id="root"></div>
+
+<style>
+/* ============================================================
+   BIRR LEDGER — drawing-sheet interface, v4
+   Colour follows architectural markup convention, split by family:
+     --blue (allowance)   = THIS MONTH: Personal bucket, Yours to spend, Runway
+     --liquidity (cyan)   = TOTAL CASH: On hand, Can pay with, Earned (feeds reserves)
+     --reserve (blue-gray)= Buffer, Essential spending — dormant, waiting
+     --green (growth)     = Vault only — true savings, never spent
+     --ochre (pending)    = other people's money — Owed to you, Lent out, Borrowed
+     --red (alert)        = spending, Owed by you, danger — Choice/Discretionary spend
+   One color, one meaning, everywhere it appears — including ring segments and
+   every number that represents that same thing.
+   Type: Space Grotesk for headings/hero numbers/prose. Monospace for all data.
+   Panels carry a colored left edge (solid = one meaning; stacked/proportional =
+   a mixed panel, never falsely claiming a single color).
+   ============================================================ */
+
+#root[data-theme="viewport"]{
+  --ground:#0F1418; --plane:#161D22; --plane2:#1B242A;
+  --edge:#29343B; --edge2:#3C4952;
+  --chalk:#E9EEEB; --graphite:#8494A0; --faint:#5A6771;
+  --blue:#5FB8DC; --red:#E45A44; --ochre:#DDA84A; --green:#4FB98A;
+  --liquidity:#22B4CC; --reserve:#77879A;
+  --gridline:rgba(255,255,255,.030);
+  --glow:0 0 0 1px rgba(95,184,220,.18), 0 0 26px -6px rgba(95,184,220,.30);
+  --lift:0 1px 0 rgba(255,255,255,.04) inset, 0 10px 26px -18px #000;
+}
+#root[data-theme="vellum"]{
+  --ground:#E3E7E3; --plane:#F8FAF7; --plane2:#EEF1ED;
+  --edge:#C4CCC5; --edge2:#A6B0A7;
+  --chalk:#111719; --graphite:#5C685F; --faint:#8B968D;
+  --blue:#1D6C90; --red:#BF3A2B; --ochre:#946A1B; --green:#2C7C5A;
+  --liquidity:#12798A; --reserve:#56636E;
+  --gridline:rgba(17,23,25,.055);
+  --glow:0 0 0 1px rgba(29,108,144,.16);
+  --lift:0 1px 0 rgba(255,255,255,.7) inset, 0 8px 20px -18px #4b544c;
+}
+
+html,body{margin:0;padding:0;background:#0F1418}
+#root{
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  --sans:"Space Grotesk",-apple-system,"Segoe UI","Helvetica Neue",Inter,system-ui,sans-serif;
+  background:var(--ground);
+  background-image:
+    linear-gradient(var(--gridline) 1px,transparent 1px),
+    linear-gradient(90deg,var(--gridline) 1px,transparent 1px);
+  background-size:26px 26px;
+  color:var(--chalk); font-family:var(--sans);
+  min-height:100vh; padding:0 0 104px; -webkit-font-smoothing:antialiased;
+  transition:background-color .35s ease,color .35s ease;
+}
+#root *{box-sizing:border-box}
+#root ::selection{background:var(--blue);color:var(--ground)}
+#root :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.sheet{max-width:820px;margin:0 auto;padding:22px 18px 0}
+
+/* ---------- type ---------- */
+.lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+
+/* ---------- sheet header ---------- */
+.hdr{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding-bottom:11px;margin-bottom:0;border-bottom:1.5px solid var(--chalk)}
+.hdr h1{margin:0;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.4em;text-transform:uppercase}
+.hdr h1::before{content:"◤ ";color:var(--blue);letter-spacing:0}
+.hdrR{display:flex;align-items:center;gap:12px}
+.themeb{border:1px solid var(--edge);background:transparent;color:var(--faint);font-family:var(--mono);
+  font-size:9px;letter-spacing:.16em;text-transform:uppercase;padding:6px 9px;cursor:pointer;
+  transition:border-color .18s,color .18s}
+.themeb:hover{border-color:var(--blue);color:var(--blue)}
+
+/* ---------- tabs ---------- */
+.nav{display:flex;gap:2px;border-bottom:1px solid var(--edge);margin-bottom:24px;position:sticky;top:0;z-index:15;background:var(--ground);box-shadow:0 8px 14px -10px rgba(0,0,0,.5)}
+.nav button{position:relative;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+  padding:13px 16px;border:0;background:transparent;color:var(--faint);cursor:pointer;transition:color .18s}
+.nav button:hover{color:var(--graphite)}
+.nav button::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--blue);
+  transform:scaleX(0);transform-origin:left;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.nav button.on{color:var(--chalk);font-weight:700}
+.nav button.on::after{transform:scaleX(1)}
+
+/* ---------- viewport panels: hairline frame + corner registration ticks ---------- */
+.panel{position:relative;border:1px solid var(--edge);background:var(--plane);box-shadow:var(--lift)}
+.panel::before,.panel::after{content:"";position:absolute;width:6px;height:6px;pointer-events:none}
+.panel::before{top:-1px;left:-1px;border-top:1.5px solid var(--edge2);border-left:1.5px solid var(--edge2)}
+.panel::after{bottom:-1px;right:-1px;border-bottom:1.5px solid var(--edge2);border-right:1.5px solid var(--edge2)}
+.panel.ppl{border-color:var(--ochre)}
+.panel.ppl::before,.panel.ppl::after{border-color:var(--ochre)}
+.panel.liq{border-color:var(--liquidity)}
+.panel.liq::before,.panel.liq::after{border-color:var(--liquidity)}
+.panel .ph{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);
+  padding:9px 12px;border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;gap:8px}
+.panel.ppl .ph{color:var(--ochre);border-bottom-color:var(--ochre)}
+.panel.liq .ph{color:var(--liquidity);border-bottom-color:var(--liquidity)}
+.panel .pr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  padding:9px 12px;border-bottom:1px solid var(--edge)}
+.panel .pr:last-child{border-bottom:0}
+.panel .pr .k{font-size:12.5px;min-width:0}
+.panel .pr .k small{display:block;font-family:var(--mono);font-size:8.5px;color:var(--faint);
+  letter-spacing:.12em;text-transform:uppercase;margin-top:3px}
+.panel .pr .v{font-family:var(--mono);font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.panel .pr .v.neg{color:var(--red)} .panel .pr .v.pos{color:var(--green)}
+.panel .pr .v.mute{color:var(--faint)} .panel .pr .v.warm{color:var(--ochre)}
+.panel .tot{background:var(--plane2);font-weight:700}
+.panel .sub{color:var(--graphite);font-style:italic}
+.board{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}
+
+/* ---------- alarms ---------- */
+.alarm{position:relative;border:1px solid var(--red);background:var(--plane);padding:13px 15px 13px 16px;
+  margin-bottom:20px;font-size:12.5px;line-height:1.55;color:var(--chalk);box-shadow:var(--lift)}
+.alarm::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red)}
+.alarm b{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--red);
+  display:block;margin-bottom:6px}
+
+/* ---------- day navigator ---------- */
+.dnav{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--edge);
+  background:var(--plane);padding:10px;margin-bottom:14px;box-shadow:var(--lift)}
+.dnav .arw{border:1px solid transparent;background:transparent;font-family:var(--mono);font-size:16px;cursor:pointer;
+  color:var(--graphite);padding:4px 12px;line-height:1;transition:color .16s,border-color .16s}
+.dnav .arw:hover:not(:disabled){color:var(--blue);border-color:var(--edge)}
+.dnav .arw:disabled{color:var(--edge);cursor:not-allowed}
+.dnav .mid{text-align:center;flex:1;min-width:0}
+.dnav .mid .dd{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.08em}
+.dnav .mid .dw{font-family:var(--mono);font-size:8.5px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--faint);margin-top:4px}
+.todaybtn{border:1px solid var(--edge);background:transparent;font-family:var(--mono);font-size:8.5px;
+  letter-spacing:.16em;text-transform:uppercase;padding:6px 8px;cursor:pointer;color:var(--faint);transition:.16s}
+.todaybtn:hover{border-color:var(--blue);color:var(--blue)}
+
+/* ---------- stat grid ---------- */
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:22px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:22px}
+.compare{display:flex;border:1px solid var(--edge);border-radius:10px;background:var(--plane);margin-bottom:8px}
+.cside{flex:1;padding:12px 13px}
+.cdiv{width:1px;background:var(--edge)}
+.cv{font-family:var(--mono);font-size:19px;font-weight:700;margin:6px 0 7px}
+.cv.growth{color:var(--green)} .cv.alert{color:var(--red)} .cv.allow{color:var(--blue)}
+.cc{font-size:10.5px;color:var(--graphite);line-height:1.5}
+.cel{background:var(--plane);border:1px solid var(--edge);border-radius:10px;
+  padding:12px 12px 13px;transition:background .18s}
+.cel:hover{background:var(--plane2)}
+.cel .v{font-size:17px;font-weight:600;margin-top:7px;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.cel.tap{border:0;font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.cel.tap:hover .lbl{color:var(--ochre)}
+.cel.tap.open{background:var(--plane2);box-shadow:inset 0 -2px 0 var(--ochre)}
+.cel .v.in{color:var(--liquidity)} .cel .v.out{color:var(--red)} .cel .v.pos{color:var(--green)}
+.cel .v.neg{color:var(--red)} .cel .v.mute{color:var(--faint)}
+
+/* ---------- 14-day strip ---------- */
+.strip{display:grid;grid-template-columns:repeat(14,1fr);gap:3px;align-items:end;height:58px;margin-bottom:5px}
+.strip button{border:0;background:transparent;padding:0;height:100%;display:flex;flex-direction:column;
+  justify-content:flex-end;cursor:pointer;transition:opacity .16s}
+.strip button:hover{opacity:.65}
+.strip .b{width:100%;min-height:2px;
+  background:linear-gradient(180deg,var(--red),color-mix(in srgb,var(--red) 30%,transparent))}
+.strip .b.sel{outline:1px solid var(--chalk);outline-offset:1px}
+.strip .b.gap{background:none;border:1px dashed var(--edge2);height:100%;min-height:0}
+.strip .b.zero{background:var(--edge2);height:2px}
+.stripx{display:grid;grid-template-columns:repeat(14,1fr);gap:3px;text-align:center;margin-bottom:22px}
+.stripx div{font-family:var(--mono);font-size:8px;color:var(--faint)}
+.stripx div.sel{color:var(--chalk);font-weight:700}
+
+  /* ---- combined day rail (picker + scrollable strip together) ---- */
+  .railwrap{border:1px solid var(--edge);background:var(--plane);box-shadow:var(--lift);margin-bottom:14px}
+  .railwrap .dnav{border:0;border-bottom:1px solid var(--edge);margin:0;box-shadow:none}
+  .rail{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;padding:10px 10px 8px;
+    scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .rail::-webkit-scrollbar{display:none}
+  .railcol{flex:0 0 auto;width:34px;border:0;background:transparent;padding:4px 0 0;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:2px;transition:background .15s}
+  .railcol:hover{background:var(--plane2)}
+  .railcol.sel{background:color-mix(in srgb,var(--blue) 14%,transparent);outline:1px solid var(--blue);outline-offset:-1px}
+  .railbar{height:46px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+  .railbar .b{width:14px;min-height:2px;
+    background:linear-gradient(180deg,var(--red),color-mix(in srgb,var(--red) 30%,transparent))}
+  .railbar .b.gap{background:none;border:1px dashed var(--edge2);height:100%;min-height:0;width:14px}
+  .railbar .b.zero{background:var(--edge2);height:3px}
+  .railcol.sel .railbar .b{background:linear-gradient(180deg,var(--blue),color-mix(in srgb,var(--blue) 30%,transparent))}
+  .railcol.sel .railbar .b.gap{border-color:var(--blue)}
+  .rd{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--graphite)}
+  .railcol.sel .rd{color:var(--blue)}
+  .rw{font-family:var(--mono);font-size:7.5px;letter-spacing:.08em;color:var(--faint)}
+  .railcol.sel .rw{color:var(--blue)}
+
+/* ---------- capture buttons ---------- */
+.cap-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.cap-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+button.big,button.sm{position:relative;overflow:hidden;font-family:var(--mono);text-transform:uppercase;
+  cursor:pointer;background:transparent;transition:color .2s,border-color .2s,transform .08s}
+button.big{font-size:10.5px;letter-spacing:.14em;padding:15px 6px;border:1px solid var(--edge2);color:var(--chalk)}
+button.sm{font-size:9.5px;letter-spacing:.12em;padding:12px 6px;border:1px solid var(--ochre);color:var(--ochre)}
+button.big::before,button.sm::before{content:"";position:absolute;inset:0;background:currentColor;opacity:0;
+  transform:translateY(101%);transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .26s}
+button.big:hover::before,button.sm:hover::before{opacity:.12;transform:translateY(0)}
+button.big:active,button.sm:active{transform:translateY(1px)}
+button.big.inflow{border-color:var(--liquidity);color:var(--liquidity)}
+button.big.outflow{border-color:var(--red);color:var(--red)}
+button.big.xfer{border-color:var(--edge2);color:var(--graphite)}
+button.big.on{background:var(--chalk);color:var(--ground);border-color:var(--chalk)}
+button.big.inflow.on{background:var(--blue);color:var(--ground);border-color:var(--blue)}
+button.big.outflow.on{background:var(--red);color:#fff;border-color:var(--red)}
+button.big.xfer.on{background:var(--graphite);color:var(--ground);border-color:var(--graphite)}
+button.sm.on{background:var(--ochre);color:var(--ground)}
+button.big:disabled,button.sm:disabled{opacity:.3;cursor:not-allowed}
+
+/* ---------- repeat chips ---------- */
+.quick{margin-bottom:20px}
+.qchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.qchip{font-family:var(--mono);font-size:10.5px;padding:8px 11px;border:1px dashed var(--edge2);
+  background:var(--plane);cursor:pointer;color:var(--graphite);white-space:nowrap;transition:.16s}
+.qchip:hover{border-style:solid;border-color:var(--red);color:var(--red);background:var(--plane2)}
+.qchip b{font-weight:700;color:var(--chalk)}
+.qchip:hover b{color:var(--red)}
+
+/* ---------- forms ---------- */
+.form{position:relative;border:1px solid var(--chalk);background:var(--plane);padding:18px;margin-bottom:22px;
+  border-radius:12px;overflow:hidden;box-shadow:var(--lift)}
+.form::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--chalk)}
+.form.people{border-color:var(--ochre)} .form.people::before{background:var(--ochre)}
+.form.spend{border-color:var(--red)} .form.spend::before{background:var(--red)}
+.form.earn{border-color:var(--blue)} .form.earn::before{background:var(--blue)}
+.form.warnb{border-color:var(--red)} .form.warnb::before{background:var(--red)}
+.amt{width:100%;border:0;border-bottom:1.5px solid var(--edge2);background:transparent;font-family:var(--mono);
+  font-size:34px;font-weight:700;padding:2px 0 10px;color:var(--chalk);outline:none;letter-spacing:-.035em;
+  transition:border-color .2s}
+.amt:focus{border-bottom-color:var(--blue)}
+.amt::placeholder{color:var(--edge2)}
+.grp{margin-top:16px}
+.gname{font-family:var(--mono);font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);margin-bottom:7px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--mono);font-size:10.5px;padding:7px 10px;border:1px solid var(--edge);background:transparent;
+  cursor:pointer;color:var(--graphite);white-space:nowrap;transition:.14s}
+.chip:hover{border-color:var(--graphite);color:var(--chalk)}
+.chip.on{border-color:var(--blue);color:var(--blue);background:color-mix(in srgb,var(--blue) 12%,transparent);font-weight:700}
+.chip:disabled{opacity:.25;cursor:not-allowed}
+.newp{margin-top:10px}
+.newp input,.note,.fee{width:100%;border:1px solid var(--edge);background:transparent;font-size:16px;padding:10px;
+  color:var(--chalk);outline:none;font-family:var(--sans);transition:border-color .18s}
+.newp input{font-family:var(--mono);border:0;border-bottom:1px solid var(--edge)}
+.note{margin-top:16px}
+.fee{margin-top:10px;border-color:color-mix(in srgb, var(--red) 35%, var(--edge));font-family:var(--mono);font-size:14px}
+.fee::placeholder{color:color-mix(in srgb, var(--red) 55%, var(--faint))}
+.note:focus,.newp input:focus{border-color:var(--blue)}
+.fee:focus{border-color:var(--red)}
+.fall{border-top:1px dashed var(--edge2);margin-top:17px;padding-top:13px}
+.fall .r{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:11.5px;padding:4px 0;
+  color:var(--graphite)}
+.fall .r span:last-child{font-weight:700;white-space:nowrap;color:var(--chalk)}
+.fall .r.z span{color:var(--edge2)}
+.truth{border-top:1px dashed var(--ochre);margin-top:15px;padding-top:12px;font-size:12.5px;line-height:1.6;
+  color:var(--graphite)}
+.truth b{color:var(--ochre)}
+.truth.bad{border-top-color:var(--red);color:var(--red)} .truth.bad b{color:var(--red)}
+.save{width:100%;margin-top:18px;padding:14px;border:0;background:var(--chalk);color:var(--ground);
+  font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;cursor:pointer;
+  transition:filter .16s,transform .08s}
+.save:hover:not(:disabled){filter:brightness(1.12)} .save:active:not(:disabled){transform:translateY(1px)}
+.save:disabled{background:var(--edge);color:var(--faint);cursor:not-allowed}
+.save.inflow{background:var(--liquidity)} .save.ppl{background:var(--ochre)}
+.save.danger{background:var(--red);color:#fff} .save.good{background:var(--green);color:var(--ground)}
+.hint{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--faint);margin-top:10px;
+  text-align:center;min-height:12px}
+
+/* ---------- ledger rows ---------- */
+.row{display:grid;grid-template-columns:50px 1fr auto;gap:12px;align-items:baseline;padding:12px 0;
+  border-bottom:1px solid var(--edge);transition:padding-left .18s}
+.row:hover{padding-left:5px}
+.row .d{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.04em}
+.row .t{font-size:13px}
+.row .t small{display:block;font-family:var(--mono);font-size:8.5px;color:var(--faint);letter-spacing:.12em;
+  text-transform:uppercase;margin-top:3px}
+.row .a{font-family:var(--mono);font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+.row .a.in{color:var(--blue)} .row .a.out{color:var(--red)}
+.row .a.xf{color:var(--graphite)} .row .a.pp{color:var(--ochre)}
+.row .del,.row .edt{border:0;background:transparent;color:transparent;cursor:pointer;font-size:14px;
+  padding:0 0 0 10px;line-height:1;transition:color .16s}
+.row:hover .del,.row:hover .edt{color:var(--edge2)}
+.row .del:hover{color:var(--red)}
+.row .edt:hover{color:var(--blue)}
+.row .edt.on{color:var(--blue)}
+.row.editing{background:color-mix(in srgb,var(--blue) 7%,transparent);
+  outline:1px solid var(--blue);outline-offset:-1px;padding-left:8px}
+@media(hover:none){.row .del,.row .edt{color:var(--edge2)}}
+
+/* ---------- bars ---------- */
+.bar{height:6px;background:var(--plane2);margin-top:8px;position:relative;overflow:hidden;border:1px solid var(--edge)}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--reserve)}
+.anim .bar i{animation:grow .6s cubic-bezier(.2,.85,.25,1) both}
+@keyframes grow{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1)}}
+.bar i.over{background:var(--red)} .bar i.disc{background:var(--red)}
+.bar i.work{background:var(--blue)} .bar i.ok{background:var(--green)}
+
+/* ---------- sections ---------- */
+.sec{margin:0 0 30px}
+.sec h3{font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);
+  font-weight:400;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--edge);
+  display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.sec h3 em{font-style:normal;color:var(--chalk);font-weight:700}
+
+/* ---------- week bars ---------- */
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:130px;margin:16px 0 8px}
+.wk button{border:0;background:transparent;padding:0;height:100%;display:flex;flex-direction:column;
+  justify-content:flex-end;cursor:pointer;transition:opacity .16s}
+.wk button:hover{opacity:.7}
+.wk .b{width:100%;min-height:3px;
+  background:linear-gradient(180deg,var(--red),color-mix(in srgb,var(--red) 22%,transparent))}
+.anim .wk .b{animation:grow2 .55s cubic-bezier(.2,.85,.25,1) both}
+@keyframes grow2{from{transform:scaleY(0);transform-origin:bottom}to{transform:scaleY(1)}}
+.wk .b.today{outline:1px solid var(--chalk);outline-offset:1px}
+.wk .b.zero{background:var(--edge2)}
+.wkx{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center}
+
+/* ---------- month calendar ---------- */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px}
+.cal .cd{aspect-ratio:1;border:1px solid var(--edge);background:var(--plane);cursor:pointer;
+  display:flex;align-items:flex-start;justify-content:flex-end;padding:4px;transition:.14s}
+.cal .cd span{font-family:var(--mono);font-size:8px;color:var(--faint)}
+.cal .cd.pad{border:0;background:transparent;cursor:default}
+.cal .cd.miss{border-style:dashed;border-color:var(--edge2)}
+.cal .cd:hover{outline:1px solid var(--blue);outline-offset:1px;transform:scale(1.06)}
+.calx{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin-bottom:8px}
+
+/* ---------- plan cards ---------- */
+.plan{position:relative;border:1px solid var(--edge);background:var(--plane);padding:16px 18px;margin-bottom:14px;
+  border-radius:10px;overflow:hidden;box-shadow:var(--lift);transition:border-color .2s}
+.plan::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--edge2)}
+.plan:hover{border-color:var(--edge2)}
+.plan.alert::before{background:var(--red)} .plan.good::before{background:var(--green)}
+.plan.warm::before{background:var(--ochre)}
+.plan.allow::before{background:var(--blue)}
+.plan .h{display:flex;justify-content:space-between;align-items:baseline;gap:14px}
+.plan .k{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.plan .n{font-family:var(--mono);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.03em;white-space:nowrap}
+.plan .n.rev{color:var(--red)} .plan .n.ok{color:var(--green)} .plan .n.dim{color:var(--blue)}
+.plan .n.warm{color:var(--ochre)}
+.plan p{font-size:12.5px;color:var(--graphite);line-height:1.65;margin:9px 0 0}
+.plan b{color:var(--chalk);font-weight:600}
+.act{margin-top:12px;border:1px solid var(--chalk);background:transparent;color:var(--chalk);
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:8px 12px;
+  cursor:pointer;transition:.16s;border-radius:16px}
+.act:hover{background:var(--chalk);color:var(--ground)}
+.ord{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:9px 0;
+  border-bottom:1px dashed var(--edge);font-size:12.5px}
+.ord:last-child{border-bottom:0}
+.ord .rk{font-family:var(--mono);font-size:9px;color:var(--faint);margin-right:10px}
+.ord .rt{font-family:var(--mono);font-size:12.5px;font-weight:700}
+.ord .rt.owe{color:var(--red)} .ord .rt.owed{color:var(--ochre)}
+
+/* ---------- confidence banner ---------- */
+.conf{border:1px dashed var(--edge2);padding:14px 15px;margin-bottom:22px;font-size:12.5px;color:var(--graphite);
+  line-height:1.65;background:var(--plane)}
+.conf b{color:var(--chalk)}
+.conf .tagx{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--blue);font-weight:700}
+.conf.bad{border-color:var(--red);border-style:solid}
+.conf.bad .tagx{color:var(--red)}
+
+/* ---------- zero-day ---------- */
+.zbtn{width:100%;padding:13px;border:1px dashed var(--edge2);background:transparent;font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);cursor:pointer;margin-top:8px;
+  transition:.16s}
+.zbtn:hover{border-style:solid;border-color:var(--green);color:var(--green)}
+.zbadge{border:1px solid var(--green);color:var(--green);padding:11px 13px;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.zbadge button{border:0;background:transparent;color:var(--faint);font-family:var(--mono);font-size:8.5px;
+  letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+.zbadge button:hover{color:var(--red)}
+.empty{padding:32px 0;text-align:center;color:var(--faint);font-size:13px;line-height:1.75}
+
+/* ---------- title block ---------- */
+.tblock{position:fixed;left:0;right:0;bottom:0;background:var(--plane);border-top:1.5px solid var(--chalk);
+  display:flex;z-index:20;backdrop-filter:blur(6px);padding-bottom:env(safe-area-inset-bottom)}
+.tblock .cell{flex:1;padding:11px 13px;border-right:1px solid var(--edge);min-width:0}
+.tblock .cell:last-child{border-right:0}
+.tblock .cell .v{font-family:var(--mono);font-size:14px;font-weight:700;margin-top:5px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tblock .cell .v.warn{color:var(--red)} .tblock .cell .v.mute{color:var(--faint)}
+.tblock .cell .v.pos{color:var(--green)}
+
+/* ---------- settings ---------- */
+.cfg{position:relative;border:1px solid var(--blue);background:var(--plane);padding:20px;margin-bottom:24px;
+  border-radius:12px;overflow:hidden;box-shadow:var(--glow)}
+.cfg::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--blue)}
+.cfg h4{margin:0 0 7px;font-size:14px;font-weight:700;letter-spacing:-.01em}
+.cfg p{margin:0 0 20px;font-size:12.5px;color:var(--graphite);line-height:1.65}
+.cfg .fl{margin-bottom:18px}
+.cfg input{width:100%;border:0;border-bottom:1.5px solid var(--edge2);background:transparent;font-family:var(--mono);
+  font-size:20px;padding:4px 0 8px;color:var(--chalk);outline:none;transition:border-color .18s}
+.cfg input:focus{border-bottom-color:var(--blue)}
+.cfg .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.cfg .g3 input{font-size:16px}
+.cfg input,.newp input,.note,.amt{-webkit-text-size-adjust:100%}
+input,button,select,textarea{touch-action:manipulation}
+.cfg .err{color:var(--red);font-family:var(--mono);font-size:10.5px;margin-top:12px;min-height:14px;line-height:1.5;
+  letter-spacing:.04em}
+.cfg .btns{display:flex;gap:9px;margin-top:16px}
+.cfg .btns button{flex:1;padding:14px;border:0;background:var(--blue);color:var(--ground);font-family:var(--mono);
+  font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;cursor:pointer;transition:filter .16s}
+.cfg .btns button:hover{filter:brightness(1.12)}
+.cfg .btns button.ghost{background:transparent;border:1px solid var(--edge2);color:var(--graphite)}
+.cfg hr{border:0;border-top:1px dashed var(--edge2);margin:22px 0}
+.prow{display:grid;grid-template-columns:1fr 100px 96px 26px;gap:9px;align-items:end;margin-bottom:13px}
+.prow input{font-size:16px}
+.prow .dir{border:1px solid var(--edge2);background:transparent;font-family:var(--mono);font-size:8.5px;
+  letter-spacing:.1em;text-transform:uppercase;padding:8px 4px;cursor:pointer;color:var(--faint);
+  white-space:nowrap;transition:.16s}
+.prow .dir.owe{border-color:var(--red);color:var(--red)}
+.prow .dir.owed{border-color:var(--green);color:var(--green)}
+.prow .x{border:0;background:transparent;color:var(--edge2);cursor:pointer;font-size:16px;padding:0 0 8px}
+.prow .x:hover{color:var(--red)}
+.addp{border:1px dashed var(--edge2);background:transparent;width:100%;padding:11px;font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);cursor:pointer;transition:.16s}
+.addp:hover{border-style:solid;border-color:var(--blue);color:var(--blue)}
+
+/* ---------- tools ---------- */
+.tools{display:flex;gap:18px;margin:36px 0 14px;flex-wrap:wrap;padding-top:18px;border-top:1px solid var(--edge)}
+.tools button{border:0;background:transparent;color:var(--faint);font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:0;transition:color .16s}
+.tools button:hover{color:var(--blue)}
+.tools button.danger:hover{color:var(--red)}
+
+/* ---- HOME composition ring ---- */
+.ringzone{display:flex;justify-content:center;margin:14px 0 8px}
+.ringzone svg{overflow:visible}
+
+/* ---- legend panels: colored left edge instead of corner ticks — Home's two board panels only ---- */
+.legend{border:1px solid var(--edge);background:var(--plane);margin-bottom:16px;border-radius:10px;
+  position:relative;overflow:hidden;padding-left:4px}
+.legend::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px}
+.legend.liq::before{background:var(--liquidity)}
+.legend.mix::before{background:transparent}
+.lh{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:1px solid var(--edge)}
+.lh svg{flex:0 0 auto}
+.lh .t{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--graphite)}
+.legend .row{display:flex;justify-content:space-between;padding:10px 13px;border-bottom:1px solid var(--edge);font-size:13px}
+.legend .row:last-child{border-bottom:0}
+.legend .row .v{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums}
+.legend .row.tot{background:var(--plane2);font-weight:700}
+.legend .alloc{display:flex;gap:2px;height:6px;margin:0 13px 11px;background:transparent;border:0}
+.legend .aseg{border-radius:2px}
+
+
+/* ---- HOME allocation bars ---- */
+.alloc{display:flex;height:7px;width:100%;overflow:hidden;border:1px solid var(--edge);
+  background:var(--plane2);margin:0 0 2px}
+.aseg{height:100%;transition:width .3s ease}
+.aseg.empty{background:repeating-linear-gradient(45deg,var(--edge2) 0 4px,transparent 4px 8px)}
+.ringempty{text-align:center;padding:0 14px 14px;font-size:11.5px;color:var(--faint);line-height:1.5}
+
+/* ---- hero runway number: the true headline, expressive type over the ring ---- */
+.heroline{text-align:center;margin-bottom:6px}
+.heroline .n{font-family:var(--sans);font-size:64px;font-weight:700;line-height:.9;
+  letter-spacing:-.04em;color:var(--blue)}
+.heroline .c{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--faint);
+  text-transform:uppercase;margin-top:8px}
+
+/* ---- two-column ring key, stacked BELOW the ring (never beside it — that's what overflowed) ---- */
+.keys{display:flex;justify-content:space-between;gap:14px;padding:0 6px 6px;margin-bottom:20px}
+.keycol{flex:1;display:flex;flex-direction:column;gap:7px}
+.keycol .kh{font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--faint);
+  text-transform:uppercase;margin-bottom:2px}
+.kx{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--graphite)}
+.kx i{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+.kx b{margin-left:auto;font-family:var(--mono);font-weight:700;color:var(--chalk);font-size:11.5px}
+.anim .aseg{animation:grow .5s cubic-bezier(.2,.85,.25,1) both}
+
+/* ---- 4-column title block ---- */
+.tblk{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--chalk);
+  border-radius:12px;overflow:hidden;background:var(--plane);margin-bottom:24px}
+.tblk div{padding:12px 8px;border-right:1px solid var(--edge)}
+.tblk div:last-child{border-right:0}
+.tblk .v{font-family:var(--mono);font-size:15px;font-weight:700;margin-top:6px}
+.tblk .v.blue{color:var(--blue)} .tblk .v.liq{color:var(--liquidity)}
+.tblk .v.alert{color:var(--red)} .tblk .v.warm{color:var(--ochre)}
+
+/* ---- mixed-edge legend panel: proportional stacked colors, no single false claim ---- */
+.mixedge{position:absolute;left:0;top:0;bottom:0;width:4px;display:flex;flex-direction:column;overflow:hidden}
+
+/* ---- people avatar chips ---- */
+.peoplewrap{margin-bottom:16px}
+.peoplehead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.peoplehead .t{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+.peoplehead .v{font-family:var(--mono);font-size:15px;font-weight:700}
+.prow{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 8px}
+.achip{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;width:58px}
+.achip .av{width:46px;height:46px;border-radius:50%;border:1.4px solid;display:flex;
+  align-items:center;justify-content:center;font-family:var(--sans);font-weight:700;font-size:14px}
+.achip .nm{font-size:10px;color:var(--graphite);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:58px}
+.achip .am{font-family:var(--mono);font-size:10px;font-weight:600}
+
+/* ---- REVIEW toggle bar ---- */
+.revbar{display:inline-flex;border:1px solid var(--edge2);margin-bottom:20px;border-radius:10px;overflow:hidden}
+.revtab{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:9px 20px;
+  border:0;background:transparent;color:var(--faint);cursor:pointer;transition:.15s}
+.revtab.on{background:var(--blue);color:var(--ground);font-weight:700}
+
+/* ---- YEAR tab ---- */
+.yh{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 12px;
+  padding-bottom:8px;border-bottom:1px solid var(--edge)}
+.yh .yr{font-family:var(--sans);font-size:20px;font-weight:700;letter-spacing:-.01em}
+.yh .tag2{font-family:var(--mono);font-size:12px;font-weight:700}
+.yh .tag2.saved{color:var(--green)} .yh .tag2.over{color:var(--red)}
+.ytot{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.ycell{background:var(--plane);border:1px solid var(--edge);border-radius:10px;padding:10px 11px}
+.ycell .v{font-family:var(--mono);font-size:15px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+.ycell .v.in{color:var(--liquidity)} .ycell .v.out{color:var(--red)} .ycell .v.pos{color:var(--green)}
+.ycell .v.neg{color:var(--red)} .ycell .v.mute{color:var(--faint)}
+.ybreak{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;padding:11px 13px;border:1px solid var(--edge);
+  border-radius:10px;margin-bottom:16px;background:var(--plane)}
+.ybreak .br{display:flex;gap:7px;align-items:baseline;font-size:12px;color:var(--graphite)}
+.ybreak .br .num{color:var(--chalk);font-weight:600}
+.ym{border:1px solid var(--edge);background:var(--plane);box-shadow:var(--lift);border-radius:12px;margin-bottom:9px;padding:12px 13px}
+.ymh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+.ymname{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.08em}
+.ymnet{font-family:var(--mono);font-size:12.5px;font-weight:700}
+.ymnet.pos{color:var(--green)} .ymnet.neg{color:var(--red)}
+.ymgrid{display:grid;grid-template-columns:auto 1fr auto;gap:5px 10px;align-items:center}
+.ymgrid .yl{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--graphite);white-space:nowrap}
+.ymgrid .yl.sub{color:var(--faint);padding-left:6px;font-size:9px}
+.ymgrid .yb{height:8px;background:var(--plane2);position:relative;overflow:hidden;border:1px solid var(--edge)}
+.ymgrid .yb i{position:absolute;inset:0 auto 0 0}
+.anim .ymgrid .yb i{animation:grow .55s cubic-bezier(.2,.85,.25,1) both}
+.yb i.ern{background:var(--liquidity)} .yb i.spt{background:var(--red)}
+.yb i.ess{background:var(--reserve)} .yb i.dsc{background:var(--red)} .yb i.wrk{background:var(--blue)}
+.ymgrid .yv{font-family:var(--mono);font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;min-width:52px}
+.ymgrid .yv.in{color:var(--blue)} .ymgrid .yv.out{color:var(--red)}
+.ymbig{margin-top:10px;padding-top:9px;border-top:1px dashed var(--edge);font-size:11.5px;color:var(--graphite)}
+.ymbig b{color:var(--chalk);font-weight:600}
+.ymbig .mut{color:var(--faint)} .ymbig .amt{font-family:var(--mono);color:var(--red);font-weight:700}
+
+.ovl{position:fixed;inset:0;z-index:60;background:color-mix(in srgb,var(--ground) 82%,transparent);
+  backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;
+  padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+.ovl .card{width:100%;max-width:560px;max-height:88vh;overflow:auto;background:var(--plane);
+  border:1px solid var(--blue);box-shadow:var(--glow);position:relative}
+.ovl .card .ph{position:sticky;top:0;background:var(--plane);font-family:var(--mono);font-size:10px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--faint);padding:12px 14px;
+  border-bottom:1px solid var(--edge);display:flex;justify-content:space-between;align-items:center}
+.ovl .xx{border:0;background:transparent;color:var(--faint);font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
+.ovl .xx:hover{color:var(--red)}
+.ovl .bkp{font-size:12.5px;color:var(--graphite);line-height:1.6;margin:0;padding:14px 16px 8px}
+.ovl .bkp b{color:var(--chalk)} .ovl .bkp em{color:var(--blue);font-style:normal}
+.bkta{width:calc(100% - 32px);margin:6px 16px;height:150px;resize:vertical;
+  font-family:var(--mono);font-size:12px;line-height:1.5;padding:10px;color:var(--chalk);
+  background:var(--ground);border:1px solid var(--edge);outline:none;white-space:pre;word-break:break-all}
+.bkta:focus{border-color:var(--blue)}
+.bkrow{display:flex;gap:8px;padding:8px 16px 4px}
+.bkrow .save{margin-top:0;flex:1}
+.save.ghost2{background:transparent;border:1px solid var(--edge2);color:var(--graphite)}
+.save.ghost2:hover:not(:disabled){filter:none;border-color:var(--blue);color:var(--blue)}
+.ovl .hint{padding:4px 16px 16px}
+
+@media(max-width:660px){
+  .board{grid-template-columns:1fr}
+  .grid4{grid-template-columns:repeat(2,1fr)}
+  .nw{flex-direction:column;align-items:flex-start;gap:14px}
+  .nw .l{max-width:100%}
+  .nwR{align-items:flex-start;width:100%}
+  .spark{width:100%}
+  .nav button{padding:13px 11px;font-size:10px}
+  .plan .n{font-size:18px}
+  .prow{grid-template-columns:1fr 78px 82px 22px;gap:6px}
+  .cfg .g3{grid-template-columns:1fr 1fr}
+}
+@media(prefers-reduced-motion:reduce){
+  #root *,#root *::before,#root *::after{animation:none!important;transition:none!important}
+}
+
+/* ---- server edition: attachments, account, users ---- */
+.attl{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.attadd{cursor:pointer;color:var(--blue);border-style:dashed}
+.attc{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;padding:6px 8px 6px 10px;
+  border:1px solid var(--edge2);color:var(--chalk);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attc.new{border-color:var(--blue)}
+.attc button{border:0;background:transparent;color:var(--faint);cursor:pointer;font-size:14px;padding:0 2px;line-height:1}
+.attc button:hover{color:var(--red)}
+.row .attb{border:0;background:transparent;color:var(--graphite);cursor:pointer;font-size:12px;padding:0 6px;font-family:var(--mono)}
+.row .attb:hover{color:var(--blue)}
+.attv{padding:8px 16px 16px}
+.attimg img{display:block;max-width:100%;height:auto;border:1px solid var(--edge);margin-top:8px}
+.attimg a,.attpdf a{display:inline-block;margin:8px 0 14px;font-family:var(--mono);font-size:10.5px;color:var(--blue);word-break:break-all}
+.pform{padding:6px 16px 0}
+.pform input{width:100%;margin:6px 0;border:0;border-bottom:1.5px solid var(--edge2);background:transparent;color:var(--chalk);
+  font-family:var(--mono);font-size:16px;padding:8px 0;outline:0;border-radius:0}
+.pform input:focus{border-bottom-color:var(--blue)}
+.urow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--edge)}
+.urow.off{opacity:.55}
+.urow .un b{font-size:13px;font-weight:600} .urow .un small{display:block;font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:2px}
+.urow .ub{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.urow .ub button{border:1px solid var(--edge2);background:transparent;color:var(--graphite);font-family:var(--mono);font-size:9.5px;padding:6px 8px;cursor:pointer}
+.urow .ub button:hover{border-color:var(--blue);color:var(--blue)}
+.cred{margin:10px 16px;padding:12px 14px;border:1px solid var(--green);background:color-mix(in srgb,var(--green) 8%,transparent)}
+.linkb{border:0;background:transparent;color:var(--blue);font:inherit;text-decoration:underline;cursor:pointer;padding:0}
+.arow{display:flex;gap:12px;padding:9px 16px;border-bottom:1px solid var(--edge);align-items:baseline}
+.arow .d{font-family:var(--mono);font-size:9.5px;color:var(--faint);white-space:nowrap}
+.arow .t{font-size:12.5px;color:var(--graphite)}
+.credv{font-family:var(--mono);font-size:15px;font-weight:700;margin:6px 0;user-select:all;word-break:break-all}
+</style>
+
+<script>
+(function(){
+  const S=100, DAY=86400000, TBILL=12.4;
+
+  const INCOME_SRC=['Design fee','Finishing job','Other'];
+  const ACCOUNTS=['Cash','telebirr','Bank'];
+  const CATS=[
+    {g:'Essential',    items:['Rent','Groceries','Food','Transport','Electricity','Water','Mobile/Internet','Health','Family']},
+    {g:'Discretionary',items:['Eating out','Coffee','Recreation','Social','Clothing/Grooming','Household','Travel','Equipment/Accessory','Giveaway']},
+    {g:'Work',         items:['Printing/Plotting','Tools/Software','Site costs','Work transport','Books']}
+  ];
+  const GROUP_OF={}; CATS.forEach(c=>c.items.forEach(i=>GROUP_OF[i]=c.g));
+  const BUCKETS=[
+    {k:'personal',n:'Personal', d:'This month\u2019s allowance'},
+    {k:'buffer',  n:'Buffer',   d:'Dry months'},
+    {k:'vault',   n:'Vault',    d:'Never spent'},
+    {k:'lent',    n:'Lent out',  d:'Yours — but out of reach'},
+    {k:'borrowed',n:'Borrowed', d:'Not yours — you owe it'}
+  ];
+
+  let db=null, tab='home', mode=null, draft={}, sel=null, editing=false, cfgErr='', cfg=null;
+  let focusAmt=false;   // true only on the form's first render — never re-fires on a chip tap
+  let focusFee=false;   // same pattern, for the fee input
+  let reviewMode='week';                               // 'week' | 'month' for the Review tab
+  let theme='viewport', animate=true, pplView=null;   // null | 'owe' | 'owed'
+  let editId=null;                                     // entry being edited, or null
+  let showBackup=false, showRestore=false;
+  const THEMEKEY='birrledger:theme';
+
+  const key=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  const fromKey=k=>{const p=k.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]).getTime();};
+  const today=()=>key(Date.now());
+  const shift=(k,n)=>key(fromKey(k)+n*DAY);
+  const toS=v=>Math.round(parseFloat(v||0)*S);
+  const fmt=c=>Math.round(c/S).toLocaleString('en-US');
+  const fmtS=c=>(c<0?'−':'')+fmt(Math.abs(c));
+  const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+  const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+  // ---------- session + server ----------
+  // Data lives in Google Sheets/Drive behind Apps Script. The browser only keeps a sign-in token
+  // (and the theme) in localStorage — both optional: if storage is blocked you just sign in each visit.
+  const TOKENKEY='birrledger:token';
+  let token=null, me=null, rev=0, saved={entries:new Map(),meta:'{}'};
+  // ---------- idle sign-out (10 min) ----------
+  // Privacy: a phone left unlocked with this open stays signed in forever unless something times it
+  // out. lastActivity is kept in localStorage (not just a JS variable) so the clock survives a full
+  // page reload or the app being suspended in the background and resumed later — on boot, and on
+  // returning to the tab, we check real elapsed time before ever rendering a signed-in user's data.
+  const IDLE_KEY='birrledger:lastActivity', IDLE_LIMIT_MS=10*60*1000;
+  let lastActivity=Date.now(), lastActivityWrite=0, idleCheckHandle=null, idleListenersBound=false;
+  function markActivity(){
+    const now=Date.now(); lastActivity=now;
+    if(now-lastActivityWrite>3000){ lastActivityWrite=now; lsSet(IDLE_KEY,String(now)); }  // throttle disk writes
+  }
+  function checkIdle(){
+    if(!token) return;
+    const stored=Number(lsGet(IDLE_KEY))||0;
+    if(Date.now()-Math.max(lastActivity,stored) >= IDLE_LIMIT_MS){
+      signOut('Signed out after 10 minutes of inactivity, for your privacy.');
+    }
+  }
+  function startIdleWatch(){
+    markActivity();
+    if(!idleListenersBound){
+      ['click','keydown','touchstart','scroll'].forEach(ev=>document.addEventListener(ev,markActivity,{passive:true}));
+      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkIdle(); });
+      idleListenersBound=true;
+    }
+    if(idleCheckHandle) clearInterval(idleCheckHandle);
+    idleCheckHandle=setInterval(checkIdle,15000);
+  }
+  function stopIdleWatch(){
+    if(idleCheckHandle){ clearInterval(idleCheckHandle); idleCheckHandle=null; }
+    lsDel(IDLE_KEY);
+  }
+  const lsGet=k=>{ try{ return window.localStorage.getItem(k); }catch(e){ return null; } };
+  const lsSet=(k,v)=>{ try{ window.localStorage.setItem(k,v); }catch(e){} };
+  const lsDel=k=>{ try{ window.localStorage.removeItem(k); }catch(e){} };
+
+  function RPC(method,args){
+    return new Promise(res=>{
+      if(typeof google==='undefined'||!google.script||!google.script.run){
+        res({ok:false,code:'NET',msg:'This page must be opened from the Apps Script web app URL.'}); return; }
+      google.script.run
+        .withSuccessHandler(r=>{
+          r=r||{ok:false,code:'SERVER',msg:'Empty response from server.'};
+          if(!r.ok && r.code==='AUTH' && method!=='login') signOut(r.msg);
+          res(r);})
+        .withFailureHandler(e=>res({ok:false,code:'NET',msg:(e&&e.message)||'Network error.'}))
+        .rpc(method, token, args||{});
+    });
+  }
+
+  const metaOf=d=>{ const m=Object.assign({},d); delete m.entries; return m; };
+
+  // Server document -> in-memory ledger. Also runs on restored backups, so old backup formats still work.
+  function normalize(raw){
+    db=raw||{};
+    if(!Array.isArray(db.entries)) db.entries=[];
+    if(!Array.isArray(db.zero))    db.zero=[];
+    if(typeof db.lastBackup!=='number') db.lastBackup=0;
+    // v4 debts -> v5 people (a debt is a person with a negative balance)
+    if(!Array.isArray(db.people)){
+      db.people=Array.isArray(db.debts)?db.debts.map(d=>({id:d.id,name:d.name,opening:-(d.opening||0)})):[];
+    }
+    delete db.debts;
+    if(!db.setup||typeof db.setup!=='object') db.setup={};
+    if(typeof db.setup.floor!=='number') db.setup.floor=0;
+    if(typeof db.setup.bufferMonths!=='number') db.setup.bufferMonths=3;
+    if(!db.setup.opening||typeof db.setup.opening!=='object') db.setup.opening={};
+    ACCOUNTS.forEach(a=>{ if(typeof db.setup.opening[a]!=='number') db.setup.opening[a]=0; });
+    delete db.setup.opening.Equb; delete db.setup.split;
+    db.entries=db.entries.filter(e=>e&&e.id&&e.acct!=='Equb'&&e.from!=='Equb'&&e.to!=='Equb');
+    db.entries.forEach(e=>{
+      if(!e.day) e.day=key(e.ts||Date.now());
+      if(e.bucket==='tax') e.bucket='buffer';
+      if(e.type==='out'&&!e.bucket) e.bucket='personal';
+      if(e.type==='borrow'){ e.type='pin';  e.person=e.debtId; }   // money IN from a person
+      if(e.type==='repay'){  e.type='pout'; e.person=e.debtId; }   // money OUT to a person
+    });
+    // opening-balance loans repay to Buffer (no recorded origin)
+    db.people.forEach(x=>{ if((x.opening||0)>0 && !x.originBucket) x.originBucket='buffer'; });
+    // MONTHLY-ENVELOPE MIGRATION (Option 3): stamp the day the envelope model began.
+    // Set once, the first time the new engine loads a ledger that already has a floor.
+    if(db.setup.floor>0 && !db.setup.envStart) db.setup.envStart=today();
+    return db;
+  }
+
+  // Fetch the signed-in user's ledger. The "saved" snapshot is taken BEFORE normalising so that any
+  // migration the normaliser performs is detected as a change and written back on the next save.
+  async function load(){
+    const r=await RPC('load');
+    if(!r.ok) throw r;
+    const raw=r.data.doc||{};
+    rev=r.data.rev; me=r.data.user;
+    saved={entries:new Map((raw.entries||[]).filter(e=>e&&e.id).map(e=>[e.id,JSON.stringify(e)])), meta:JSON.stringify(metaOf(raw))};
+    normalize(raw);
+  }
+  const BACKUP_EVERY=14*DAY;
+  const backupDue=()=>{
+    if(!db||!db.entries||db.entries.length<3) return false;
+    if(!db.lastBackup) return true;
+    return (Date.now()-db.lastBackup) > BACKUP_EVERY;
+  };
+
+  // Saves are sent as a delta (changed/removed entries by id, settings only when changed) and
+  // serialised so rapid taps can never interleave. The snapshot only advances on success, so a
+  // failed save is simply re-sent, with everything since, by the next one.
+  let saveOk=true, saveQ=Promise.resolve();
+  const save=()=>(saveQ=saveQ.then(doSave,doSave));
+  async function doSave(){
+    if(!db||!token||viewAs) return;         // read-only "view as": nothing is ever written back
+    const cur=new Map(db.entries.map(e=>[e.id,JSON.stringify(e)]));
+    const metaStr=JSON.stringify(metaOf(db));
+    const upserts=[], deletes=[];
+    db.entries.forEach(e=>{ if(saved.entries.get(e.id)!==cur.get(e.id)) upserts.push(e); });
+    saved.entries.forEach((_,id)=>{ if(!cur.has(id)) deletes.push(id); });
+    const metaChanged=metaStr!==saved.meta;
+    if(!upserts.length&&!deletes.length&&!metaChanged) return;
+    const payload={baseRev:rev,upserts,deletes};
+    if(metaChanged) payload.meta=metaOf(db);
+    const r=await RPC('save',payload);
+    const before=saveOk;
+    if(r.ok){
+      saveOk=true; rev=r.data.rev; saved={entries:cur,meta:metaStr};
+      if(r.data.stale){ await refreshFromServer(); }          // another device saved too — pick up its entries
+    }else if(r.code==='CONFLICT'){
+      saveOk=true;
+      await refreshFromServer();
+      alert('This ledger was changed on another device, so it has been reloaded. Please redo your last change.');
+    }else if(r.code==='AUTH'){
+      return;                                                   // RPC already routed to the sign-in screen
+    }else{
+      saveOk=false;
+    }
+    if(before!==saveOk||r.code==='CONFLICT') render();
+  }
+  async function refreshFromServer(){
+    const keep=sel;
+    try{ await load(); sel=keep; render(); }catch(e){ if(!(e&&e.code==='AUTH')) saveOk=false; }
+  }
+
+  function signOut(msg){
+    token=null; me=null; db=null; mode=null; draft={}; editId=null; panel=null; attView=null; usersList=null; newCred=null;
+    viewAs=null; myDb=null; myMe=null; myRev=0; mySaved=null;
+    stopIdleWatch();
+    lsDel(TOKENKEY);
+    fileCache.forEach(f=>URL.revokeObjectURL(f.url)); fileCache.clear();
+    renderLogin(msg||'');
+  }
+
+  // ---------- attachments ----------
+  const ATT_MAX=5*1024*1024, ATT_LIMIT=5, IMG_EDGE=1600;
+  const fileCache=new Map();                       // fileId -> {url,name,mime}
+  let panel=null, attView=null, usersList=null, newCred=null, panelErr='';
+  let viewAs=null, auditList=null;           // admin "view as" read-only mode: {id,username,name}
+  let myDb=null, myMe=null, myRev=0, mySaved=null;   // the admin's own ledger, parked while viewing someone else's
+  const RO=()=>!!viewAs;
+  const readB64=blob=>new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(String(r.result).split(',')[1]||'');
+    r.onerror=()=>rej(new Error('Could not read the file.'));
+    r.readAsDataURL(blob); });
+  const loadImg=file=>new Promise((res,rej)=>{
+    const u=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); };
+    im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error(file.name+': this image format cannot be read. Use JPEG, PNG or WebP.')); };
+    im.src=u; });
+  // Photos are shrunk to JPEG (max 1600px) before upload: receipts stay legible, uploads stay fast.
+  async function prepFile(file){
+    if(file.type==='application/pdf'){
+      if(file.size>ATT_MAX) throw new Error(file.name+': PDF is over 5 MB.');
+      return {name:file.name,mime:file.type,b64:await readB64(file),size:file.size};
+    }
+    if(!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error(file.name+': use a photo (JPEG, PNG, WebP) or a PDF.');
+    const im=await loadImg(file);
+    const k=Math.min(1,IMG_EDGE/Math.max(im.naturalWidth,im.naturalHeight));
+    const c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(im.naturalWidth*k)); c.height=Math.max(1,Math.round(im.naturalHeight*k));
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.82));
+    if(!blob||blob.size>ATT_MAX) throw new Error(file.name+': image is too large even after shrinking.');
+    return {name:file.name.replace(/\.[^.]+$/,'')+'.jpg',mime:'image/jpeg',b64:await readB64(blob),size:blob.size};
+  }
+  const attCount=()=>(draft.att||[]).length+(draft.newFiles||[]).length;
+  function attField(){
+    const have=(draft.att||[]).map((a,i)=>`<span class="attc">📎 ${esc(a.name)}<button data-attx="a${i}" title="Remove">×</button></span>`);
+    const fresh=(draft.newFiles||[]).map((a,i)=>`<span class="attc new">📎 ${esc(a.name)}<button data-attx="n${i}" title="Remove">×</button></span>`);
+    return `<div class="grp"><div class="gname">Receipt / attachment</div><div class="attl">
+        ${have.concat(fresh).join('')}
+        ${attCount()<ATT_LIMIT?`<label class="chip attadd">+ Add photo or PDF<input type="file" id="attf" accept="image/*,application/pdf" multiple hidden/></label>`:''}
+      </div>${draft.attErr?`<div class="hint" style="color:var(--red)">${esc(draft.attErr)}</div>`:''}</div>`;
+  }
+  const b64Blob=(b64,mime)=>{ const bin=atob(b64), u=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return new Blob([u],{type:mime}); };
+  async function openAtt(entryId){
+    const e=db.entries.find(x=>x.id===entryId); if(!e||!e.att||!e.att.length) return;
+    panel='att'; attView={entryId,items:e.att.map(a=>({a,state:fileCache.has(a.fileId)?'ok':'load',msg:''}))}; render();
+    for(const it of attView.items){
+      if(it.state==='ok') continue;
+      const r=await RPC('file',{fileId:it.a.fileId});
+      if(!attView) return;                                   // closed meanwhile
+      if(r.ok){ fileCache.set(it.a.fileId,{url:URL.createObjectURL(b64Blob(r.data.b64,r.data.mime)),name:r.data.name,mime:r.data.mime}); it.state='ok'; }
+      else{ it.state='err'; it.msg=r.msg||'Could not load.'; }
+      if(panel==='att') render();
+    }
+  }
+  function attSheet(){
+    if(panel!=='att'||!attView) return '';
+    return `<div class="ovl" id="ovlp"><div class="card">
+      <div class="ph"><span>Attachments</span><button class="xx" id="p_x">✕</button></div>
+      <div class="attv">${attView.items.map(it=>{
+        const f=fileCache.get(it.a.fileId);
+        if(it.state==='load') return `<div class="hint">Loading ${esc(it.a.name)}…</div>`;
+        if(it.state==='err')  return `<div class="hint" style="color:var(--red)">${esc(it.a.name)}: ${esc(it.msg)}</div>`;
+        return f.mime==='application/pdf'
+          ? `<div class="attpdf"><a href="${f.url}" download="${esc(it.a.name)}" target="_blank" rel="noopener">⬇ ${esc(it.a.name)} (PDF)</a></div>`
+          : `<div class="attimg"><img src="${f.url}" alt="${esc(it.a.name)}"/><a href="${f.url}" download="${esc(it.a.name)}">⬇ ${esc(it.a.name)}</a></div>`;
+      }).join('')}</div></div></div>`;
+  }
+
+  // ---------- sign-in, account and admin screens ----------
+  function renderLogin(msg){
+    const root=document.getElementById('root');
+    root.setAttribute('data-theme',theme);
+    root.innerHTML=`<div class="sheet"><div class="hdr"><h1>Ledger</h1></div>
+      <div class="cfg"><h4>Sign in</h4>
+        <p>Use the username and password your administrator gave you.</p>
+        <div class="fl"><div class="lbl">Username</div>
+          <input id="l_u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"/></div>
+        <div class="fl"><div class="lbl">Password</div>
+          <input id="l_p" type="password" autocomplete="current-password"/></div>
+        <div class="err" id="l_err">${esc(msg||'')}</div>
+        <div class="btns"><button id="l_go">Sign in</button></div></div></div>`;
+    const go=async()=>{
+      const u=document.getElementById('l_u').value, p=document.getElementById('l_p').value;
+      const err=document.getElementById('l_err'), btn=document.getElementById('l_go');
+      if(!u||!p){ err.textContent='Enter your username and password.'; return; }
+      btn.disabled=true; err.textContent='';
+      const r=await RPC('login',{username:u,password:p});
+      if(!r.ok){ btn.disabled=false; err.textContent=r.msg||'Could not sign in.'; return; }
+      token=r.data.token; lsSet(TOKENKEY,token);
+      await enter(err);
+    };
+    document.getElementById('l_go').onclick=go;
+    document.getElementById('l_p').onkeydown=e=>{ if(e.key==='Enter') go(); };
+  }
+  async function enter(errEl){
+    try{ await load(); }
+    catch(r){
+      if(r&&r.code==='AUTH') return;
+      const m=(r&&r.msg)||'Could not load your ledger.';
+      if(errEl) errEl.textContent=m; else renderLogin(m);
+      if(!errEl) token=null;
+      return;
+    }
+    sel=today(); tab='home'; mode=null; draft={}; editId=null; panel=null;
+    if(db.setup.floor>0) await save();
+    render();
+    startIdleWatch();
+  }
+
+  function panelSheet(){
+    if(panel==='att') return attSheet();
+    if(panel==='acct'){
+      return `<div class="ovl" id="ovlp"><div class="card">
+        <div class="ph"><span>Account</span><button class="xx" id="p_x">✕</button></div>
+        <p class="bkp">Signed in as <b>${esc(me.name)}</b> (${esc(me.username)}). Changing your password signs you out on every other device.</p>
+        <div class="pform">
+          <input id="a_cur" type="password" placeholder="Current password" autocomplete="current-password"/>
+          <input id="a_new" type="password" placeholder="New password (8+ characters)" autocomplete="new-password"/>
+          <input id="a_new2" type="password" placeholder="Repeat new password" autocomplete="new-password"/>
+        </div>
+        <div class="bkrow"><button class="save good" id="a_go">Change password</button></div>
+        <div class="hint" id="a_msg">${esc(panelErr)}</div></div></div>`;
+    }
+    if(panel==='users'){
+      const rows=(usersList||[]).map(u=>`<div class="urow${u.active?'':' off'}">
+          <div class="un"><b>${esc(u.name)}</b><small>${esc(u.username)}${u.role==='admin'?' · admin':''}${u.active?'':' · disabled'}</small></div>
+          <div class="ub">${u.id===me.id?'':`<button data-uview="${esc(u.id)}">View ledger</button>`}
+            <button data-ures="${esc(u.id)}">Reset password</button>
+            ${u.id===me.id?'':`<button data-uact="${esc(u.id)}" data-on="${u.active?'0':'1'}">${u.active?'Disable':'Enable'}</button>`}</div></div>`).join('');
+      return `<div class="ovl" id="ovlp"><div class="card">
+        <div class="ph"><span>Users</span><button class="xx" id="p_x">✕</button></div>
+        <p class="bkp">Everyone's ledger is private to them. <b style="color:var(--chalk);display:inline">View ledger</b> opens it for
+          you to read — every view is recorded in the <button class="linkb" id="u_audit">audit log</button>.</p>
+        ${newCred?`<div class="cred"><div class="lbl">${esc(newCred.label)}</div>
+          <div class="credv">${esc(newCred.username)} &nbsp;/&nbsp; ${esc(newCred.password)}</div>
+          <div class="hint">Shown once. Copy it now and send it to the user privately.</div></div>`:''}
+        ${usersList?rows:'<div class="hint" style="padding:0 16px">Loading…</div>'}
+        <div class="pform">
+          <div class="lbl">Add a user</div>
+          <input id="u_name" placeholder="Display name"/>
+          <input id="u_user" placeholder="username (letters, digits . _ -)" autocapitalize="none" autocorrect="off" spellcheck="false"/>
+        </div>
+        <div class="bkrow"><button class="save good" id="u_add">Create user</button></div>
+        <div class="hint" id="u_msg">${esc(panelErr)}</div></div></div>`;
+    }
+    if(panel==='audit'){
+      const rows=(auditList||[]).map(r=>`<div class="arow">
+        <div class="d">${esc(new Date(r.ts).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))}</div>
+        <div class="t"><b>${esc(r.admin)}</b> ${esc(r.action)}${r.target&&r.target!==r.admin?' — '+esc(r.target):''}</div></div>`).join('');
+      return `<div class="ovl" id="ovlp"><div class="card">
+        <div class="ph"><span>Audit log</span><button class="xx" id="p_x">✕</button></div>
+        <p class="bkp">Every admin action — viewing a ledger, creating a user, resetting a password — appended here, oldest action never edited.</p>
+        ${auditList?(rows||'<div class="hint" style="padding:0 16px">Nothing yet.</div>'):'<div class="hint" style="padding:0 16px">Loading…</div>'}
+        </div></div>`;
+    }
+    return '';
+  }
+  async function openUsers(){
+    panel='users'; panelErr=''; newCred=null; usersList=null; render();
+    const r=await RPC('listUsers');
+    if(panel!=='users') return;
+    if(r.ok) usersList=r.data; else panelErr=r.msg||'Could not load users.';
+    render();
+  }
+  async function openAudit(){
+    panel='audit'; auditList=null; render();
+    const r=await RPC('listAudit');
+    if(panel!=='audit') return;
+    if(r.ok) auditList=r.data;
+    render();
+  }
+
+  // ---------- admin: read-only "view as" ----------
+  async function enterViewAs(u){
+    panel=null; panelErr='';
+    const r=await RPC('adminLoad',{userId:u.id});
+    if(!r.ok){ panelErr=r.msg||'Could not open that ledger.'; panel='users'; render(); return; }
+    myDb=db; myMe=me; myRev=rev; mySaved=saved;              // park the admin's own ledger
+    viewAs={id:u.id,username:u.username,name:u.name};
+    const raw=r.data.doc||{};
+    saved={entries:new Map(),meta:''};                       // never diffed against — RO never saves
+    rev=r.data.rev; me=r.data.user;
+    normalize(raw);
+    sel=today(); tab='home'; mode=null; draft={}; editId=null;
+    render(); window.scrollTo(0,0);
+  }
+  function exitViewAs(){
+    viewAs=null; db=myDb; me=myMe; rev=myRev; saved=mySaved;
+    myDb=null; myMe=null; mySaved=null;
+    sel=today(); tab='home'; mode=null; draft={}; editId=null;
+    render(); window.scrollTo(0,0);
+  }
+
+  // ---------- engine (monthly-envelope model) ----------
+  const floorS=()=>db.setup.floor;
+  const bufTarget=()=>db.setup.floor*db.setup.bufferMonths;
+  const monthKey=k=>k.slice(0,7);                                  // 'YYYY-MM'
+  const firstOfMonth=(y,m)=>y+'-'+String(m).padStart(2,'0')+'-01';
+
+  // Spend cascades: Personal first, then Buffer, then Vault. Returns nothing; mutates bk.
+  function drawDown(bk, amt, from){
+    const order=['personal','buffer','vault'];
+    const start=Math.max(0, order.indexOf(from||'personal'));   // unset/'personal' -> unchanged behavior;
+    const taken=[];                                              // {bucket,amt} — what actually came from where
+    for(let i=start;i<order.length;i++){                        // 'buffer'/'vault' -> skip higher-priority buckets
+      const k=order[i];
+      if(amt<=0) break;
+      const t=Math.min(amt, Math.max(0, bk[k]));
+      if(t>0){ bk[k]-=t; amt-=t; taken.push({bucket:k, amt:t}); }
+    }
+    if(amt>0){ bk.vault-=amt; taken.push({bucket:'vault', amt}); amt=0; }   // overspend drives Vault negative (visible)
+    return taken;
+  }
+  // New reserves (earned, repaid-to-buffer/vault) stack Buffer up to target, then Vault. Never Personal.
+  function addReserve(bk, amt, toBucket){
+    if(toBucket==='vault'){ bk.vault+=amt; return; }
+    if(toBucket==='personal'){ bk.personal+=amt; return; }         // only used by repay-to-origin
+    const room=Math.max(0, bufTarget()-bk.buffer);
+    const t=Math.min(amt, room); bk.buffer+=t; amt-=t;
+    bk.vault+=amt;
+  }
+  // The bucket a new spend/loan should default to: the first one with real room, Personal→Buffer→Vault.
+  // Once Personal is drained for the month, new entries default to Buffer instead of an exhausted Personal.
+  function defaultBucket(st){
+    return ['personal','buffer','vault'].find(k=>st.buckets[k]>0) || 'personal';
+  }
+
+  // Build the list of month-1st boundaries strictly AFTER the migration anchor, up to today.
+  function refillDates(){
+    const anchor=db.setup.envStart;                               // 'YYYY-MM-DD' when the envelope began
+    if(!anchor) return [];
+    const out=[]; const t0=fromKey(anchor), tNow=fromKey(today());
+    let d=new Date(t0); d=new Date(d.getFullYear(), d.getMonth(), 1);
+    // step to the first 1st AFTER the anchor month
+    d=new Date(d.getFullYear(), d.getMonth()+1, 1);
+    while(d.getTime()<=tNow){
+      out.push(firstOfMonth(d.getFullYear(), d.getMonth()+1));
+      d=new Date(d.getFullYear(), d.getMonth()+1, 1);
+    }
+    return out;
+  }
+
+  function state(){
+    const acc={}; ACCOUNTS.forEach(a=>acc[a]=db.setup.opening[a]||0);
+    const bk={personal:0,buffer:0,vault:0,lent:0,borrowed:0};
+    // per-person: signed net balance, plus a FIFO stack of outstanding loan lots {amt,from}
+    const bal={}, lots={};
+    db.people.forEach(x=>{
+      bal[x.id]=x.opening||0;
+      lots[x.id]=[];
+      if((x.opening||0)>0) lots[x.id].push({amt:x.opening, from:x.originBucket||'buffer'});  // opening loans -> buffer on repay
+    });
+    const owed=()=>db.people.reduce((s,x)=>s+Math.max(0,-(bal[x.id]||0)),0);
+    const lent=()=>db.people.reduce((s,x)=>s+Math.max(0, (bal[x.id]||0)),0);
+    const savings=[];                                             // {month, amt} roll-over history
+
+    // ----- migration anchor: one fresh Personal envelope, rest to Buffer->Vault -----
+    const openCash=ACCOUNTS.reduce((s,a)=>s+(db.setup.opening[a]||0),0);
+    const openLent=lent();
+    // Seed spendable buckets from CASH ONLY. Opening lent-out money is represented by bk.lent
+    // separately — folding it in here too would double-count it (breaks assets===buckets).
+    if(db.setup.envStart){
+      bk.personal=Math.min(floorS(), openCash);
+      let rest=openCash-bk.personal;
+      addReserve(bk, Math.max(0,rest), 'buffer');
+    }else if(openCash>0){
+      bk.personal=openCash;                                       // pre-setup fallback
+    }
+    bk.lent=openLent;
+
+    // ----- merge entries and month-boundary refills into one ordered timeline -----
+    const evs=db.entries.map(e=>({k:e.day, ts:e.ts||0, e}));
+    for(const rd of refillDates()) evs.push({k:rd, ts:-1, refill:true});   // refills fire before same-day entries
+    evs.sort((a,b)=> a.k<b.k?-1 : a.k>b.k?1 : (a.ts-b.ts));
+
+    for(const ev of evs){
+      if(ev.refill){
+        // 1) roll leftover Personal up into Buffer, recorded as this month's saving
+        const leftover=Math.max(0, bk.personal);
+        if(leftover>0){ bk.buffer+=leftover; savings.push({month:monthKey(shift(ev.k,-1)), amt:leftover}); }
+        bk.personal=0;
+        // 2) refill Personal to cap by DRAWING DOWN reserves (Buffer, then Vault).
+        //    This re-designates existing money as the month's allowance — it never creates money,
+        //    so assets===buckets stays true. If reserves are short, Personal fills only as far as they reach.
+        let need=floorS();
+        for(const src of ['buffer','vault']){
+          if(need<=0) break;
+          const t=Math.min(need, Math.max(0, bk[src]));
+          bk[src]-=t; bk.personal+=t; need-=t;
+        }
+        // if reserves were exhausted, Personal is below cap — honest: you don't have a full month
+        continue;
+      }
+      const e=ev.e;
+      if(e.type==='in'){ acc[e.acct]=(acc[e.acct]||0)+e.amt; addReserve(bk, e.amt, 'buffer'); }
+      else if(e.type==='out'){ acc[e.acct]=(acc[e.acct]||0)-e.amt; drawDown(bk, e.amt, e.bucket); }
+      else if(e.type==='xfer'){ acc[e.from]=(acc[e.from]||0)-e.amt; acc[e.to]=(acc[e.to]||0)+e.amt; }
+      else if(e.type==='pin'){                                    // money IN from a person
+        const b=bal[e.person]||0;
+        const collect=Math.min(e.amt, Math.max(0,b));             // they pay back what they owed you
+        const borrow=e.amt-collect;                               // remainder is new borrowing
+        acc[e.acct]=(acc[e.acct]||0)+e.amt;
+        // return collected money to the bucket(s) it was lent from, newest lots first
+        let rem=collect; const st=lots[e.person]||[];
+        while(rem>0 && st.length){
+          const lot=st[st.length-1];
+          const t=Math.min(rem, lot.amt);
+          addReserve(bk, t, lot.from==='personal'?'personal':(lot.from==='vault'?'vault':'buffer'));
+          lot.amt-=t; rem-=t; if(lot.amt<=1e-9) st.pop();
+        }
+        if(rem>0) addReserve(bk, rem, 'buffer');                  // safety: unmatched -> buffer
+        bk.borrowed+=borrow;
+        bk.lent-=collect;
+        bal[e.person]=b-e.amt;
+      }
+      else if(e.type==='pout'){                                   // money OUT to a person
+        const b=bal[e.person]||0;
+        const repay=Math.min(e.amt, Math.max(0,-b));              // pay down what you owe them
+        const give=e.amt-repay;                                   // remainder is a new loan you make
+        acc[e.acct]=(acc[e.acct]||0)-e.amt;
+        if(repay>0) drawDown(bk, repay);                          // repaying a debt spends from your buckets
+        if(give>0){
+          const from=e.lendFrom||'personal';
+          const taken=drawDown(bk, give, from);                  // cascades Personal→Buffer→Vault, same
+                                                                   // protection spending already had
+          bk.lent+=give;
+          const st=(lots[e.person]||(lots[e.person]=[]));
+          taken.forEach(t=>st.push({amt:t.amt, from:t.bucket}));  // one lot per bucket actually drawn from,
+        }                                                         // so a cascaded loan still repays correctly
+        bal[e.person]=b+e.amt;
+      }
+      // Transaction fee: real money lost to a payment channel, on top of whatever the entry itself
+      // already did above. Applied uniformly and independently, so none of the type-specific logic
+      // above needs to know fees exist — this can never double-count or interact with category math.
+      if(e.fee>0){
+        const feeAcct=(e.type==='xfer')?e.from:e.acct;
+        if(feeAcct) acc[feeAcct]=(acc[feeAcct]||0)-e.fee;
+        drawDown(bk, e.fee, e.bucket||e.lendFrom||'personal');
+      }
+    }
+    const cash=ACCOUNTS.reduce((s,a)=>s+acc[a],0);
+    const lentOut=lent(), youOwe=owed();
+    const assets=cash+lentOut;
+    const bkTotal=bk.personal+bk.buffer+bk.vault+bk.lent+bk.borrowed;
+    const yours=Math.max(0,Math.min(bk.personal,cash));
+    const onLoan=Math.max(0,Math.min(bk.borrowed,cash-yours));
+    const canPay=Math.max(0,cash);
+    return {accounts:acc,buckets:bk,people:bal,cash,lentOut,youOwe,assets,bkTotal,savings,
+            yours,onLoan,canPay,reachable:yours,netWorth:assets-youOwe};
+  }
+  // income/repay now land in reserves; preview shows Buffer/Vault split (no Personal, no waterfall)
+  const preview=a=>{const st=state();const bk={...st.buckets};const before=bk.buffer+0;
+    addReserve(bk,a,'buffer');return {personal:0,payoff:0,buffer:bk.buffer-st.buckets.buffer,vault:bk.vault-st.buckets.vault};};
+  function splitOut(st,person,a){ const b=st.people[person]||0;
+    const repay=Math.min(a,Math.max(0,-b)); return {repay,lend:a-repay,before:b,after:b+a}; }
+  function splitIn(st,person,a){ const b=st.people[person]||0;
+    const collect=Math.min(a,Math.max(0,b)); return {collect,borrow:a-collect,before:b,after:b-a}; }
+
+  // ---------- helpers ----------
+  const on=k=>db.entries.filter(e=>e.day===k);
+  const outOn=k=>on(k).filter(e=>e.type==='out').reduce((s,e)=>s+e.amt,0);
+  const inOn=k=>on(k).filter(e=>e.type==='in').reduce((s,e)=>s+e.amt,0);
+  const logged=k=>on(k).length>0||db.zero.indexOf(k)>=0;
+  function blankPastDays(){
+    const f=firstDay(); if(!f) return [];
+    const out=[]; const t=today();
+    let d=f;
+    while(d<t){                                   // strictly before today (today may still be in progress)
+      if(!logged(d)) out.push(d);
+      d=shift(d,1);
+    }
+    return out;
+  }
+  const hasFloor=()=>db.setup.floor>0;
+  const pName=id=>{const x=db.people.find(y=>y.id===id);return x?x.name:'someone';};
+  function firstDay(){const ks=db.entries.map(e=>e.day).concat(db.zero).sort();return ks.length?ks[0]:null;}
+  function coverage(){
+    const f=firstDay(); if(!f) return {span:0,cov:0,pct:0};
+    const span=Math.max(1,Math.round((fromKey(today())-fromKey(f))/DAY)+1);
+    let cov=0; for(let i=0;i<span;i++) if(logged(shift(f,i))) cov++;
+    return {span,cov,pct:Math.round((cov/span)*100)};
+  }
+  const byCat=l=>{const m={};l.filter(e=>e.type==='out').forEach(e=>m[e.tag]=(m[e.tag]||0)+e.amt);
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);};
+  const byGroup=l=>{const m={Essential:0,Discretionary:0,Work:0};
+    l.filter(e=>e.type==='out').forEach(e=>m[GROUP_OF[e.tag]||'Discretionary']+=e.amt);return m;};
+
+  // Aggregate the whole log into per-month rows: spending by group, earned income, and gap.
+  // Personal-line = Essential (living), plus Discretionary and Work shown separately.
+  function monthlyRollup(){
+    const M={};                                     // 'YYYY-MM' -> {ess,disc,work,earned,big,fee,personalOut}
+    const touch=m=>{ if(!M[m]) M[m]={ess:0,disc:0,work:0,earned:0,big:null,fee:0,personalOut:0}; return M[m]; };
+    for(const e of db.entries){
+      const m=e.day.slice(0,7);
+      if(e.type==='out'){
+        const g=GROUP_OF[e.tag]||'Discretionary';
+        const row=touch(m);
+        if(g==='Essential') row.ess+=e.amt;
+        else if(g==='Work') row.work+=e.amt;
+        else row.disc+=e.amt;
+        if(!row.big||e.amt>row.big.amt) row.big={amt:e.amt,tag:e.tag,note:e.note||''};
+        if((e.bucket||'personal')==='personal') row.personalOut+=e.amt;
+      }else if(e.type==='in'){ touch(m).earned+=e.amt; }
+      else if(e.type==='pout' && e.lendFrom==='personal'){ touch(m).personalOut+=e.amt; }
+      if(e.fee>0) touch(m).fee+=e.fee;               // fees ride on any type — tracked independently of category
+    }
+    const months=Object.keys(M).sort();
+    return months.map(m=>{
+      const r=M[m]; const spent=r.ess+r.disc+r.work; const net=r.earned-spent;
+      return {month:m, ess:r.ess, disc:r.disc, work:r.work, spent, earned:r.earned, net, big:r.big, fee:r.fee,
+        personalOut:r.personalOut};
+    });
+  }
+  function yearlyRollup(rows){
+    const Y={};
+    for(const r of rows){
+      const y=r.month.slice(0,4);
+      if(!Y[y]) Y[y]={year:y,ess:0,disc:0,work:0,spent:0,earned:0,net:0,months:0,fee:0};
+      const a=Y[y]; a.ess+=r.ess; a.disc+=r.disc; a.work+=r.work; a.spent+=r.spent;
+      a.earned+=r.earned; a.net+=r.net; a.months++; a.fee+=r.fee;
+    }
+    return Object.values(Y).sort((a,b)=>a.year<b.year?1:-1);   // newest first
+  }
+  const MONTHNAME=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const mLabel=m=>MONTHNAME[parseInt(m.slice(5,7),10)-1]+" "+m.slice(0,4);
+
+  // ---------- shell ----------
+  function backupSheet(){
+    if(!showBackup) return '';
+    const text=JSON.stringify(db);
+    return `<div class="ovl" id="ovl">
+      <div class="card">
+        <div class="ph"><span>Backup</span><button class="xx" id="bk_x">✕</button></div>
+        <p class="bkp">This is your whole ledger as text. <b>Copy it</b> and keep it somewhere safe —
+          a note to yourself, a message, an email draft. Pasting it back under Restore rebuilds everything.
+          No file, no download warning.</p>
+        <textarea class="bkta" id="bk_text" readonly>${esc(text)}</textarea>
+        <div class="bkrow">
+          <button class="save" id="bk_copy">Copy to clipboard</button>
+          <button class="save ghost2" id="bk_file">Save as file instead</button>
+        </div>
+        <div class="hint" id="bk_msg">${text.length.toLocaleString()} characters</div>
+      </div></div>`;
+  }
+  function restoreSheet(){
+    if(!showRestore) return '';
+    return `<div class="ovl" id="ovlr">
+      <div class="card">
+        <div class="ph"><span>Restore</span><button class="xx" id="rs_x">✕</button></div>
+        <p class="bkp">Paste a backup below and tap Restore — or pick a saved <em>.json</em> file.
+          This <b>replaces</b> everything currently in the ledger.</p>
+        <textarea class="bkta" id="rs_text" placeholder="Paste your backup text here…"></textarea>
+        <div class="bkrow">
+          <button class="save good" id="rs_go">Restore from text</button>
+          <button class="save ghost2" id="rs_file">Pick a file instead</button>
+        </div>
+        <div class="hint" id="rs_msg"></div>
+      </div></div>`;
+  }
+  function render(){
+    if(!db||!me) return;                       // signed out while an async save/refresh was in flight
+    const st=state();
+    const daily=hasFloor()?db.setup.floor/30.4:0;
+    const runway=daily>0?Math.floor(st.yours/daily):null;
+    const bDays=daily>0?Math.floor(st.onLoan/daily):0;
+    const root=document.getElementById('root');
+    root.setAttribute('data-theme',theme);
+    root.innerHTML=`
+      <div class="sheet${animate?' anim':''}">
+        <div class="hdr"><h1>Ledger</h1>
+          <div class="hdrR">
+            <div class="lbl">${esc(me.name)} · ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</div>
+            <button class="themeb" id="theme">${theme==='viewport'?'Vellum':'Viewport'}</button>
+          </div></div>
+        <div class="nav">${[['home','home'],['day','day'],['review','review'],['year','year'],['plan','plan']].map(([t,lbl])=>
+          `<button class="${tab===t?'on':''}" data-t="${t}">${lbl}</button>`).join('')}</div>
+        ${viewAs?`<div class="alarm" style="border-color:var(--blue)">
+          <b style="color:var(--blue)">Read-only — viewing ${esc(viewAs.name)}'s ledger</b>
+          You are signed in as admin, looking at another user's data. Nothing here can be changed or added.
+          This view was just recorded in the audit log.
+          <button class="act backAdminBtn" style="margin-top:9px">Back to my ledger</button></div>`:''}
+        ${(!RO()&&backupDue())?`<div class="alarm" style="border-color:var(--ochre)">
+          <b style="color:var(--ochre)">Back this up</b>
+          ${db.lastBackup?`It has been ${Math.floor((Date.now()-db.lastBackup)/86400000)} day(s) since your last backup.`
+            :`You have ${db.entries.length} entries and no backup yet.`}
+          Your ledger is stored on the server, but keep your own copy too — a backup file is
+          your protection against a mistaken restore or erase.
+          <button class="act" id="baknow" style="margin-top:9px">Back up now</button></div>`:''}
+        ${(!RO()&&!saveOk)?`<div class="alarm"><b>Not saved</b>
+          The server could not be reached, so your latest changes exist only on this screen. They are kept and
+          re-sent with your next save — don't close this page yet.
+          <button class="act" id="retry" style="margin-top:9px">Retry now</button></div>`:''}
+        ${RO()&&!hasFloor()?`<div class="cfg"><h4>No data yet</h4><p>This user has not completed their setup.</p></div>`
+          :(!RO()&&(!hasFloor()||editing))?cfgPanel():''}
+        ${tab==='home'?viewHome(st,daily,runway,bDays):tab==='day'?viewDay(st,daily,runway,bDays):tab==='review'?viewReview(st):tab==='year'?viewYear(st):viewPlan(st)}
+        <div class="tools">
+          <button id="exp">Export CSV</button>${RO()?`<button class="backAdminBtn">Back to my ledger</button>`:`
+          <button id="bak">Backup (JSON)</button>
+          <button id="imp">Restore</button><button id="edit">Settings &amp; people</button>
+          <button id="acct">Account</button>${me.role==='admin'?'<button id="usr">Users</button>':''}
+          <button id="out">Log out</button>
+          <button id="reset" class="danger">Erase all</button>`}
+          <input type="file" id="impf" accept="application/json,.json" style="display:none"/></div>
+      </div>
+      <div class="tblock">
+        <div class="cell"><div class="lbl">Your runway</div>
+          <div class="v ${runway===null?'mute':(runway<7?'warn':'')}">${runway===null?'—':runway+'d'}${
+            bDays>0?`<span style="color:var(--ochre);font-weight:400"> +${bDays}</span>`:''}</div></div>
+        <div class="cell"><div class="lbl">Can pay with</div>
+          <div class="v">${fmt(st.canPay)}</div></div>
+        <div class="cell"><div class="lbl">Owe</div>
+          <div class="v ${st.youOwe>0?'warn':'mute'}">${fmt(st.youOwe)}</div></div>
+        <div class="cell"><div class="lbl">Net worth</div>
+          <div class="v ${st.netWorth<0?'warn':'pos'}">${fmtS(st.netWorth)}</div></div>
+      </div>
+      ${backupSheet()}${restoreSheet()}${panelSheet()}`;
+    wire();
+    // centre the day rail on the selected day so past days are reachable without a Today round-trip
+    const rail=document.getElementById('rail');
+    if(rail){
+      const selCol=rail.querySelector('.railcol.sel');
+      if(selCol){
+        const target=selCol.offsetLeft - (rail.clientWidth/2) + (selCol.offsetWidth/2);
+        rail.scrollLeft=Math.max(0,target);
+      }else{ rail.scrollLeft=rail.scrollWidth; }
+    }
+    animate=true;
+  }
+
+  function openCfg(){
+    cfg={ floor: db.setup.floor?String(Math.round(db.setup.floor/S)):'',
+          bm: String(db.setup.bufferMonths),
+          opening: Object.fromEntries(ACCOUNTS.map(a=>[a, db.setup.opening[a]?String(Math.round(db.setup.opening[a]/S)):''])),
+          people: db.people.map(x=>({id:x.id,name:x.name,mag:Math.abs(x.opening||0),neg:(x.opening||0)<0})) };
+  }
+  function cfgPanel(){
+    if(!cfg) openCfg();
+    const s=cfg;
+    return `<div class="cfg">
+      <h4>${hasFloor()?'Settings &amp; people':'Two things to start'}</h4>
+      <p>${hasFloor()?'The floor drives the waterfall, your allowance and your runway. People you owe — and people who owe you — are both tracked here; both change your net worth.'
+        :'What does your life cost to run in a normal month? A rough guess is fine — the daily log will correct it. Then what you hold, and who you owe or who owes you.'}</p>
+      <div class="fl"><div class="lbl">Monthly personal cost — your floor (ETB)</div>
+        <input id="c_floor" type="number" inputmode="numeric" placeholder="0" value="${esc(s.floor)}"/></div>
+      <div class="fl"><div class="lbl">Buffer target (months of the floor)</div>
+        <input id="c_bm" type="number" inputmode="numeric" value="${esc(s.bm)}"/></div>
+      <hr/>
+      <div class="lbl" style="margin-bottom:9px">What you hold right now (ETB)</div>
+      <div class="g3">${ACCOUNTS.map(a=>`<div><input id="c_o_${a}" type="number" placeholder="0"
+        value="${esc(s.opening[a]||'')}"/>
+        <div class="lbl" style="text-align:center;margin-top:6px">${a}</div></div>`).join('')}</div>
+      <hr/>
+      <div class="lbl" style="margin-bottom:9px">People</div>
+      ${s.people.map((x,i)=>`<div class="prow">
+        <div><input class="p_n" data-i="${i}" type="text" placeholder="Name" value="${esc(x.name||'')}"/>
+          <div class="lbl" style="margin-top:5px">Who</div></div>
+        <div><input class="p_a" data-i="${i}" type="number" placeholder="0" value="${x.mag?Math.round(x.mag/S):''}"/>
+          <div class="lbl" style="margin-top:5px">Amount</div></div>
+        <button class="dir ${x.neg?'owe':'owed'}" data-pd="${i}">${x.neg?'I owe':'Owes me'}</button>
+        <button class="x" data-px="${i}" title="Remove">×</button>
+      </div>`).join('')}
+      <button class="addp" id="c_addp">+ Add a person</button>
+      <div class="err">${esc(cfgErr)}</div>
+      <div class="btns"><button id="c_save">Save</button>
+        ${hasFloor()?`<button id="c_cancel" class="ghost">Cancel</button>`:''}</div>
+    </div>`;
+  }
+
+  // ================= DAY =================
+  // HOME: read-only overview, always "today". Summary panels live here, not on Day.
+  // Net-worth composition ring: On hand + Lent out fill the ring; Owed is drawn as a red
+  // bite taken out of it — literally a piece missing from what would otherwise be whole.
+  // Two concentric rings, drawn synchronously as SVG arc paths (innerHTML won't run <script>,
+  // so this must compute geometry in plain JS, same pattern as the rest of this file's SVGs).
+  function arcPath(cx,cy,R,a0,a1,color,width){
+    const x0=cx+R*Math.cos(a0), y0=cy+R*Math.sin(a0);
+    const x1=cx+R*Math.cos(a1), y1=cy+R*Math.sin(a1);
+    const large=(a1-a0)>Math.PI?1:0;
+    return `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}"
+      fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round"/>`;
+  }
+  function ringSegs(cx,cy,R,width,parts,gapDeg){
+    const total=parts.reduce((s,p)=>s+Math.max(0,p.v),0)||1;
+    const gapRad=gapDeg*Math.PI/180;
+    const visible=parts.filter(p=>p.v>0);
+    const availAngle=2*Math.PI-gapRad*visible.length;
+    let angle=-Math.PI/2, out='';
+    visible.forEach(p=>{
+      const sweep=availAngle*(p.v/total);
+      out+=arcPath(cx,cy,R,angle,angle+sweep,p.color,width);
+      angle+=sweep+gapRad;
+    });
+    return out;
+  }
+  function ringChart(st){
+    const cx=110, cy=110;
+    const outer=ringSegs(cx,cy,92,14,[
+      {v:st.buckets.personal,color:'var(--blue)'},
+      {v:st.buckets.buffer,  color:'var(--reserve)'},
+      {v:st.buckets.vault,   color:'var(--green)'},
+    ],4);
+    const inner=ringSegs(cx,cy,68,14,[
+      {v:st.cash,    color:'var(--liquidity)'},
+      {v:st.lentOut, color:'var(--ochre)'},
+      {v:st.youOwe,  color:'var(--red)'},
+    ],5);
+    return `<svg viewBox="0 0 220 220" width="220" height="220" role="img" aria-label="Money composition">
+        <circle cx="${cx}" cy="${cy}" r="92" fill="none" stroke="var(--edge)" stroke-width="14"/>
+        <circle cx="${cx}" cy="${cy}" r="68" fill="none" stroke="var(--edge)" stroke-width="14"/>
+        ${outer}${inner}
+        <text x="${cx}" y="${cy-4}" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-size="21"
+          font-weight="700" fill="${st.netWorth<0?'var(--red)':'var(--chalk)'}">${fmtS(st.netWorth)}</text>
+        <text x="${cx}" y="${cy+15}" text-anchor="middle" font-family="ui-monospace, monospace" font-size="7.5"
+          letter-spacing="1.8" fill="var(--faint)">NET WORTH</text>
+      </svg>`;
+  }
+  // Keys sit BELOW the ring (not beside it) — stacked, not side-by-side, so nothing overflows on a phone.
+  function ringKeys(st){
+    return `<div class="keys">
+      <div class="keycol">
+        <div class="kh">Outer · What it's for</div>
+        <div class="kx"><i style="background:var(--blue)"></i>Personal<b>${fmt(st.buckets.personal)}</b></div>
+        <div class="kx"><i style="background:var(--reserve)"></i>Buffer<b>${fmt(st.buckets.buffer)}</b></div>
+        <div class="kx"><i style="background:var(--green)"></i>Vault<b>${fmt(st.buckets.vault)}</b></div>
+      </div>
+      <div class="keycol">
+        <div class="kh">Inner · Composition</div>
+        <div class="kx"><i style="background:var(--liquidity)"></i>On hand<b>${fmt(st.cash)}</b></div>
+        <div class="kx"><i style="background:var(--ochre)"></i>Owed to you<b>${fmt(st.lentOut)}</b></div>
+        ${st.youOwe>0?`<div class="kx"><i style="background:var(--red)"></i>Owed by you<b>${fmt(st.youOwe)}</b></div>`:''}
+      </div>
+    </div>`;
+  }
+  // A slim proportional bar: [[label,value,color], ...] sized to their own total.
+  // Renders a neutral empty track (not nothing) when there is no money yet, so the
+  // feature is visible even on a fresh install.
+  function allocBar(parts){
+    const total=parts.reduce((s,p)=>s+Math.max(0,p[1]),0);
+    if(total<=0) return `<div class="alloc"><div class="aseg empty" style="width:100%" title="Nothing logged yet"></div></div>`;
+    return `<div class="alloc">${parts.filter(p=>p[1]>0).map(p=>
+      `<div class="aseg" style="width:${(p[1]/total*100).toFixed(2)}%;background:${p[2]}" title="${esc(p[0])} · ${fmt(p[1])}"></div>`
+    ).join('')}</div>`;
+  }
+
+  function viewHome(st,daily,runway,bDays){
+    const neg=ACCOUNTS.filter(a=>st.accounts[a]<0);
+    const hasMoney=st.cash+st.lentOut+st.youOwe>0;
+    const pbv=st.buckets.personal+st.buckets.buffer+st.buckets.vault;   // Personal+Buffer+Vault only —
+                                                                          // lent/borrowed live in the ring, not here
+    const oweList=db.people.map(x=>({name:x.name,b:st.people[x.id]||0})).filter(x=>x.b<0)
+      .map(x=>({name:x.name,amt:-x.b})).sort((a,b)=>b.amt-a.amt);
+    const owedList=db.people.map(x=>({name:x.name,b:st.people[x.id]||0})).filter(x=>x.b>0)
+      .sort((a,b)=>b.b-a.b);
+    const chip=(x,cls,amt)=>`<div class="achip"><div class="av" style="border-color:var(--${cls});color:var(--${cls})">${esc(x.name.slice(0,2))}</div>
+      <div class="nm">${esc(x.name)}</div><div class="am" style="color:var(--${cls})">${fmt(amt)}</div></div>`;
+    return `
+      ${hasFloor()?`<div class="heroline">
+        <div class="n">${runway===null?'—':runway}${bDays>0?`<span style="color:var(--ochre);font-size:.4em;font-weight:600"> +${bDays}</span>`:''}</div>
+        <div class="c">Days of spending left</div>
+      </div>`:''}
+
+      <div class="ringzone">${ringChart(st)}</div>
+      ${ringKeys(st)}
+      ${hasMoney?'':`<div class="ringempty">Nothing logged yet — set your floor and log a day to see this fill in.</div>`}
+
+      <div class="tblk">
+        <div><div class="lbl">Yours</div><div class="v blue">${fmt(st.yours)}</div></div>
+        <div><div class="lbl">Can pay</div><div class="v liq">${fmt(st.canPay)}</div></div>
+        <div><div class="lbl">Owe</div><div class="v alert">${fmt(st.youOwe)}</div></div>
+        <div><div class="lbl">Owed</div><div class="v warm">${fmt(st.lentOut)}</div></div>
+      </div>
+
+      ${st.onLoan>0?`<div class="alarm" style="border-color:var(--ochre)">
+        <b style="color:var(--ochre)">Borrowed money is buying you time, not money</b>
+        You hold ${fmt(st.canPay)}, but only ${fmt(st.yours)} of it is yours. The other ${fmt(st.onLoan)} buys roughly
+        <b style="color:var(--chalk);display:inline">${bDays} extra day${bDays===1?'':'s'}</b> — and every one of those days
+        costs you net worth. That is what borrowing actually is: <em>days now, worth later.</em></div>`:''}
+
+      ${st.buckets.personal>st.cash&&st.cash>=0?`<div class="alarm"><b>Worth more than you can spend</b>
+        Your Personal bucket holds ${fmt(st.buckets.personal)}, but only ${fmt(st.cash)} is within reach —
+        the rest is out with someone. You are not poor. You are <em>illiquid</em>, which feels identical at the shop.</div>`:''}
+
+      ${neg.length?`<div class="alarm"><b>Something is missing</b>
+        ${neg.map(esc).join(' and ')} ${neg.length>1?'are':'is'} negative — you've spent more from
+        ${neg.length>1?'them':'it'} than ${neg.length>1?'they':'it'} held. A transfer or a loan probably wasn't logged.</div>`:''}
+
+      <!-- WHERE IT IS — solid liquidity edge: 100% one concept, no lent-out row (that lives in the ring) -->
+      <div class="legend liq">
+        <div class="lh">
+          <svg width="15" height="15" viewBox="0 0 16 16"><rect x="1" y="4" width="14" height="10" rx="1.5" fill="none" stroke="var(--liquidity)" stroke-width="1.2"/><circle cx="11" cy="9" r="1.2" fill="var(--liquidity)"/></svg>
+          <div class="t">Where it is</div>
+        </div>
+        ${allocBar([['Cash',Math.max(0,st.accounts.Cash),'color-mix(in srgb, var(--liquidity) 100%, transparent)'],
+                    ['telebirr',Math.max(0,st.accounts.telebirr),'color-mix(in srgb, var(--liquidity) 68%, transparent)'],
+                    ['Bank',Math.max(0,st.accounts.Bank),'color-mix(in srgb, var(--liquidity) 40%, transparent)']])}
+        ${ACCOUNTS.map(a=>`<div class="row"><span>${a}</span>
+          <span class="v ${st.accounts[a]<0?'neg':''}">${fmtS(st.accounts[a])}</span></div>`).join('')}
+        <div class="row tot"><span>Assets</span><span class="v">${fmtS(st.cash)}</span></div>
+      </div>
+
+      <!-- WHAT IT'S FOR — mixed edge: 3 stacked colors proportional to Personal/Buffer/Vault only -->
+      <div class="legend mix">
+        <div class="mixedge">
+          <div style="flex:${pbv>0?Math.max(0,st.buckets.personal)/pbv:0} 0 0%;background:var(--blue)"></div>
+          <div style="flex:${pbv>0?Math.max(0,st.buckets.buffer)/pbv:0} 0 0%;background:var(--reserve)"></div>
+          <div style="flex:${pbv>0?Math.max(0,st.buckets.vault)/pbv:1} 0 0%;background:var(--green)"></div>
+        </div>
+        <div class="lh">
+          <svg width="15" height="15" viewBox="0 0 16 16"><rect x="4" y="1" width="8" height="14" rx="1.5" fill="none" stroke="var(--graphite)" stroke-width="1.2"/><line x1="4" y1="6" x2="12" y2="6" stroke="var(--graphite)" stroke-width="1"/><line x1="4" y1="10" x2="12" y2="10" stroke="var(--graphite)" stroke-width="1"/></svg>
+          <div class="t">What it's for</div>
+        </div>
+        ${allocBar([['Personal',Math.max(0,st.buckets.personal),'var(--blue)'],
+                    ['Buffer',Math.max(0,st.buckets.buffer),'var(--reserve)'],
+                    ['Vault',Math.max(0,st.buckets.vault),'var(--green)']])}
+        <div class="row"><span>Personal${floorS()?' · cap '+fmt(floorS()):''}</span><span class="v">${fmtS(st.buckets.personal)}</span></div>
+        <div class="row"><span>Buffer${bufTarget()?' · target '+fmt(bufTarget()):''}</span><span class="v">${fmtS(st.buckets.buffer)}</span></div>
+        <div class="row"><span>Vault</span><span class="v">${fmtS(st.buckets.vault)}</span></div>
+        <div class="row tot"><span>Total</span><span class="v">${fmtS(pbv)}</span></div>
+      </div>
+
+      ${oweList.length?`<div class="peoplewrap">
+        <div class="peoplehead"><span class="t" style="color:var(--red)">You owe</span><span class="v" style="color:var(--red)">${fmt(st.youOwe)}</span></div>
+        <div class="prow">${oweList.map(x=>chip(x,'red',x.amt)).join('')}</div>
+      </div>`:''}
+      ${owedList.length?`<div class="peoplewrap">
+        <div class="peoplehead"><span class="t" style="color:var(--ochre)">Owed to you</span><span class="v" style="color:var(--ochre)">${fmt(st.lentOut)}</span></div>
+        <div class="prow">${owedList.map(x=>chip(x,'ochre',x.b)).join('')}</div>
+      </div>`:''}`;
+  }
+
+  // DAY: pure logging, date-navigable. No summary panels.
+  function viewDay(st,daily,runway,bDays){
+    const k=sel, isToday=k===today(), isFuture=fromKey(k)>fromKey(today());
+    const list=on(k).slice().sort((a,x)=>(x.ts||0)-(a.ts||0));
+    const spent=outOn(k), got=inOn(k), left=daily-spent, over=left<0;
+    const isZero=db.zero.indexOf(k)>=0;
+
+    return `
+      ${(()=>{if(RO()) return '';
+        const bp=blankPastDays();return bp.length?`<div class="alarm" style="border-color:var(--chalk)">
+        <b style="color:var(--chalk)">${bp.length} blank day${bp.length===1?'':'s'} before today</b>
+        These days have nothing logged — they are holes, not zeros. If a day was genuinely no-spend, mark it so the
+        Plan tab counts it. Only do this for days you are sure about.
+        <button class="act" id="fillzero" style="margin-top:9px">Mark all ${bp.length} as no-spend</button>
+        <button class="act" id="gofirst" style="margin-top:9px;margin-left:6px">Go to oldest</button></div>`:'';})()}
+
+      ${dayRail(st)}
+
+      <div class="grid4">
+        <div class="cel"><div class="lbl">Spent</div><div class="v out">${fmt(spent)}</div></div>
+        <div class="cel"><div class="lbl">Allowance</div>
+          <div class="v ${daily?'':'mute'}" style="${daily?'color:var(--faint)':''}">${daily?fmt(daily):'—'}</div></div>
+        <div class="cel"><div class="lbl">${over&&daily?'Over by':'Left'}</div>
+          <div class="v ${daily?(over?'neg':'pos'):'mute'}">${daily?fmt(Math.abs(left)):'—'}</div></div>
+        <div class="cel"><div class="lbl">Earned</div><div class="v ${got?'in':'mute'}">${fmt(got)}</div></div>
+      </div>
+
+      <div class="cap-row">
+        <button class="big inflow ${mode==='in'?'on':''}" id="m_in" ${isFuture||RO()?'disabled':''}>+ Earned</button>
+        <button class="big xfer ${mode==='xfer'?'on':''}" id="m_xf" ${isFuture||RO()?'disabled':''}>⇄ Transfer</button>
+        <button class="big outflow ${mode==='out'?'on':''}" id="m_out" ${isFuture||RO()?'disabled':''}>− Spent</button>
+      </div>
+      <div class="cap-row2">
+        <button class="sm ${mode==='pin'?'on':''}" id="m_pi" ${isFuture||RO()?'disabled':''}>⊕ From a person</button>
+        <button class="sm ${mode==='pout'?'on':''}" id="m_po" ${isFuture||RO()?'disabled':''}>⊖ To a person</button>
+      </div>
+
+      ${mode&&!RO()?formHTML(st):(RO()?'':frequentHTML())}
+
+      ${spent?`<div class="sec"><h3><span>Essential vs choice</span><em>${fmt(spent)}</em></h3>
+        ${groupBars(byGroup(on(k)),spent)}</div>`:''}
+
+      <div class="sec"><h3><span>Entries</span><em>${list.length}</em></h3>
+        ${list.length?list.map(rowHTML).join(''):
+          isZero?`<div class="zbadge"><span>✓ No-spend day recorded</span>${RO()?'':'<button id="unzero">Undo</button>'}</div>`
+                :`<div class="empty">Nothing logged for this day.<br/>A blank day and a zero day are not the same thing.</div>
+                  ${(!isFuture&&!RO())?`<button class="zbtn" id="zero">Mark this as a no-spend day</button>`:''}`}
+      </div>`;
+  }
+
+
+  function peopleRow(st,from,to){
+    const inP = db.entries.filter(e=>e.type==='pin' &&(!from||(e.day>=from&&e.day<=to))).reduce((a,e)=>a+e.amt,0);
+    const outP= db.entries.filter(e=>e.type==='pout'&&(!from||(e.day>=from&&e.day<=to))).reduce((a,e)=>a+e.amt,0);
+    const net = st.lentOut - st.youOwe;
+    return `<div class="grid4" style="margin-bottom:${pplView?'1px':'22px'}">
+      <button class="cel tap ${pplView==='owe'?'open':''}" data-ppl="owe">
+        <div class="lbl">You owe ${st.youOwe>0?'▾':''}</div>
+        <div class="v ${st.youOwe>0?'neg':'mute'}">${fmt(st.youOwe)}</div></button>
+      <button class="cel tap ${pplView==='owed'?'open':''}" data-ppl="owed">
+        <div class="lbl">They owe you ${st.lentOut>0?'▾':''}</div>
+        <div class="v ${st.lentOut>0?'pos':'mute'}">${fmt(st.lentOut)}</div></button>
+      <div class="cel"><div class="lbl">Net with people</div>
+        <div class="v ${net===0?'mute':(net>0?'pos':'neg')}">${fmtS(net)}</div></div>
+      <div class="cel"><div class="lbl">Moved ${from?'this period':'today'}</div>
+        <div class="v ${(inP||outP)?'':'mute'}" style="${(inP||outP)?'color:var(--ochre)':''}">${
+          (inP||outP)?`+${fmt(inP)} / −${fmt(outP)}`:'0'}</div></div>
+    </div>${pplList(st)}`;
+  }
+
+  // Every balance below is the person's opening position plus every
+  // "From a person" (pin) minus... no — plus/minus every entry that names them:
+  //   pin  (money came from them)  ->  balance falls (you owe more / they owe you less)
+  //   pout (money went to them)    ->  balance rises (they owe you more / you owe less)
+  // Positive balance = they owe you. Negative = you owe them.
+  function pplList(st){
+    if(!pplView) return '';
+    const isOwe = pplView==='owe';
+    const rows = db.people
+      .map(x=>({name:x.name, b:st.people[x.id]||0}))
+      .filter(x=> isOwe ? x.b<0 : x.b>0)
+      .map(x=>({name:x.name, amt:Math.abs(x.b)}))
+      .sort((a,b)=>b.amt-a.amt);
+    const total = rows.reduce((s,x)=>s+x.amt,0);
+    return `<div class="panel ppl" style="margin-bottom:22px">
+      <div class="ph"><span>${isOwe?'Everyone you owe':'Everyone who owes you'}</span>
+        <span>${rows.length} name${rows.length===1?'':'s'} · ${fmt(total)}</span></div>
+      ${rows.length?rows.map(x=>`<div class="pr"><div class="k">${esc(x.name)}
+          <small>${isOwe?'You owe':'Owes you'}</small></div>
+          <div class="v ${isOwe?'neg':'pos'}">${fmt(x.amt)}</div></div>`).join('')
+        :`<div class="pr"><div class="k sub">${isOwe?'You owe nobody.':'Nobody owes you.'}</div>
+           <div class="v mute">0</div></div>`}
+      ${rows.length?`<div class="pr tot"><div class="k">Total</div>
+        <div class="v ${isOwe?'neg':'pos'}">${fmt(total)}</div></div>`:''}
+    </div>`;
+  }
+
+  function dayRail(st){
+    const k=sel, isToday=k===today();
+    const d=new Date(fromKey(k));
+    // full history: first logged day (or 13 days back, whichever earlier) .. today
+    const f=firstDay();
+    // rail spans from the EARLIEST of: first logged day, the selected day, or 13 days back — up to today
+    let startT=fromKey(shift(today(),-13));
+    if(f) startT=Math.min(startT, fromKey(f));
+    startT=Math.min(startT, fromKey(sel));
+    const days=[]; let t=startT, end=fromKey(today());
+    while(t<=end){ const kk=key(t); days.push({k:kk, v:outOn(kk), has:logged(kk)}); t+=DAY; }
+    let max=1; days.forEach(x=>{ if(x.v>max) max=x.v; });
+
+    return `<div class="railwrap">
+      <div class="dnav">
+        <button class="arw" id="prev" aria-label="Previous day">‹</button>
+        <div class="mid"><div class="dd">${d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</div>
+          <div class="dw">${isToday?'Today':d.toLocaleDateString('en-GB',{weekday:'long'})}</div></div>
+        <button class="arw" id="next" aria-label="Next day" ${isToday?'disabled':''}>›</button>
+        ${!isToday?`<button class="todaybtn" id="jt">Today</button>`:''}
+      </div>
+      <div class="rail" id="rail">
+        ${days.map(x=>{const mk=x.k.slice(5); // MM-DD
+          const dd=new Date(fromKey(x.k));
+          const wd=dd.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2);
+          const h=x.has&&x.v>0?Math.max(6,(x.v/max)*100):0;
+          return `<button class="railcol ${x.k===k?'sel':''}" data-day="${x.k}" title="${x.k} · ${fmt(x.v)}">
+            <div class="railbar"><div class="b ${!x.has?'gap':(x.v===0?'zero':'')}" style="height:${h}%"></div></div>
+            <div class="rd">${x.k.slice(8)}</div>
+            <div class="rw">${x.k===today()?'TODAY':wd}</div>
+          </button>`;}).join('')}
+      </div>
+    </div>`;
+  }
+
+  function frequentHTML(){
+    if(fromKey(sel)>fromKey(today())) return '';
+    const cut=Date.now()-45*DAY, m={};
+    db.entries.filter(e=>e.type==='out'&&fromKey(e.day)>cut).forEach(e=>{
+      const kk=e.tag+'|'+e.amt+'|'+e.acct; m[kk]=(m[kk]||0)+1;});
+    const top=Object.entries(m).filter(x=>x[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    if(!top.length) return '';
+    return `<div class="quick"><div class="lbl">Repeat — one tap</div><div class="qchips">
+      ${top.map(x=>{const p=x[0].split('|');
+        return `<button class="qchip" data-rep="${esc(x[0])}">${esc(p[0])} <b>${fmt(+p[1])}</b></button>`;}).join('')}
+    </div></div>`;
+  }
+
+  function personChips(){
+    const isNew=draft.person==='__new';
+    return `<div class="grp"><div class="gname">Who</div><div class="chips">
+      ${db.people.map(x=>`<button class="chip ${draft.person===x.id?'on':''}" data-per="${x.id}">${esc(x.name)}</button>`).join('')}
+      <button class="chip ${isNew?'on':''}" data-per="__new">+ New</button></div>
+      ${isNew?`<div class="newp"><input id="p_new" type="text" placeholder="Their name" value="${esc(draft.pName||'')}"/></div>`:''}
+    </div>`;
+  }
+
+  function feeField(){
+    return `<input class="fee" id="fee" type="number" inputmode="decimal"
+      placeholder="Transaction fee (optional)" value="${draft.fee||''}"/>`;
+  }
+  function editBanner(){
+    if(!editId) return '';
+    const e=db.entries.find(v=>v.id===editId); if(!e) return '';
+    return `<div class="lbl" style="margin-bottom:12px;color:var(--blue)">✎ Editing the entry from ${esc(e.day)} — saving replaces it</div>`;
+  }
+  function formHTML(st){
+    const amt=parseFloat(draft.amt||0), aS=toS(amt);
+    const isNew=draft.person==='__new';
+    const personOk=isNew?!!(draft.pName&&draft.pName.trim()):!!draft.person;
+
+    if(mode==='xfer'){
+      const ready=amt>0&&draft.from&&draft.to&&draft.from!==draft.to;
+      const miss=[]; if(!(amt>0))miss.push('amount'); if(!draft.from)miss.push('from'); if(!draft.to)miss.push('to');
+      return `<div class="form">
+        ${editBanner()}
+        <input class="amt" id="amt" type="number" inputmode="decimal" placeholder="0" value="${draft.amt||''}"/>
+        <div class="lbl" style="margin-top:6px">Birr · ${esc(sel)} · money you already have</div>
+        <div class="grp"><div class="gname">From</div><div class="chips">
+          ${ACCOUNTS.map(o=>`<button class="chip ${draft.from===o?'on':''}" data-from="${o}">${o}</button>`).join('')}</div></div>
+        <div class="grp"><div class="gname">To</div><div class="chips">
+          ${ACCOUNTS.map(o=>`<button class="chip ${draft.to===o?'on':''}" data-to="${o}" ${draft.from===o?'disabled':''}>${o}</button>`).join('')}</div></div>
+        ${feeField()}
+        <div class="fall"><div class="r"><span>Counts as income</span><span>No — not new money</span></div>
+          <div class="r"><span>Buckets · net worth</span><span>unchanged</span></div></div>
+        ${attField()}
+        <button class="save" id="rec" ${ready?'':'disabled'}>${editId?'Save changes':'Record transfer'}</button>
+        <div class="hint" id="hint">${ready?'':'Still needed: '+miss.join(', ')}</div></div>`;
+    }
+
+    if(mode==='pin'){                                     // money IN from a person
+      const ready=amt>0&&personOk&&draft.acct;
+      const miss=[]; if(!(amt>0))miss.push('amount'); if(!personOk)miss.push('who'); if(!draft.acct)miss.push('account');
+      const sp=(!isNew&&draft.person)?splitIn(st,draft.person,aS):{collect:0,borrow:aS,before:0,after:-aS};
+      const nm=isNew?(draft.pName||'someone'):pName(draft.person);
+      return `<div class="form people">
+        ${editBanner()}
+        <input class="amt" id="amt" type="number" inputmode="decimal" placeholder="0" value="${draft.amt||''}"/>
+        <div class="lbl" style="margin-top:6px">Birr · ${esc(sel)} · money coming from a person</div>
+        ${personChips()}
+        <div class="grp"><div class="gname">Landed in</div><div class="chips">
+          ${ACCOUNTS.map(o=>`<button class="chip ${draft.acct===o?'on':''}" data-acct="${o}">${o}</button>`).join('')}</div></div>
+        <div class="fall">
+          ${sp.collect>0?`<div class="r"><span>${esc(nm)} paying you back</span><span>${fmt(sp.collect)}</span></div>`:''}
+          ${sp.borrow>0?`<div class="r"><span>You borrowing</span><span>${fmt(sp.borrow)}</span></div>`:''}
+          <div class="r"><span>Counts as income</span><span>No</span></div>
+          <div class="r"><span>Net worth change</span><span>0</span></div></div>
+        ${aS>0?`<div class="truth ${sp.borrow>0?'bad':''}">${
+          sp.borrow>0
+            ? `You will hold <b>${fmt(sp.borrow)}</b> more and owe <b>${fmt(sp.borrow)}</b> more. It does not make you richer — it goes to the <b>Borrowed</b> bucket, not Personal. Your net worth only moves when you <em>spend</em> it, and then it moves down.`
+            : `${esc(nm)} is returning your own money. Nothing about your net worth changes — it just comes back into reach.`}</div>`:''}
+        ${attField()}
+        <button class="save ppl" id="rec" ${ready?'':'disabled'}>${editId?'Save changes':'Record it'}</button>
+        <div class="hint" id="hint">${ready?'':'Still needed: '+miss.join(', ')}</div></div>`;
+    }
+
+    if(mode==='pout'){                                    // money OUT to a person
+      const ready=amt>0&&personOk&&draft.acct;
+      const miss=[]; if(!(amt>0))miss.push('amount'); if(!personOk)miss.push('who'); if(!draft.acct)miss.push('account');
+      const sp=(!isNew&&draft.person)?splitOut(st,draft.person,aS):{repay:0,lend:aS,before:0,after:aS};
+      const nm=isNew?(draft.pName||'someone'):pName(draft.person);
+      const lf=draft.lendFrom||defaultBucket(st);
+      const daily=hasFloor()?db.setup.floor/30.4:0;
+      const rNow=daily>0?Math.floor(st.reachable/daily):null;
+      const cashAfter=st.cash-aS;
+      const persAfter=st.buckets.personal-(lf==='personal'?sp.lend:0)-Math.min(sp.repay,st.buckets.personal);
+      const reachAfter=Math.max(0,Math.min(persAfter,cashAfter));
+      const rAfter=daily>0?Math.floor(reachAfter/daily):null;
+      const danger=rAfter!==null&&rAfter<7, caution=rAfter!==null&&rAfter<14;
+      const srcBal=st.buckets[lf]||0;
+      return `<div class="form people">
+        ${editBanner()}
+        <input class="amt" id="amt" type="number" inputmode="decimal" placeholder="0" value="${draft.amt||''}"/>
+        <div class="lbl" style="margin-top:6px">Birr · ${esc(sel)} · money going to a person</div>
+        ${personChips()}
+        <div class="grp"><div class="gname">Paid from</div><div class="chips">
+          ${ACCOUNTS.map(o=>`<button class="chip ${draft.acct===o?'on':''}" data-acct="${o}">${o}${
+            st.accounts[o]<aS?' ·'+fmt(st.accounts[o]):''}</button>`).join('')}</div></div>
+        ${sp.repay>0?`<div class="grp"><div class="gname">Repayment drawn from</div>
+          <div class="lbl" style="text-transform:none;letter-spacing:0;font-family:var(--sans);font-size:12px;color:var(--graphite)">
+            Cascades automatically: Personal first, then Buffer, then Vault.</div></div>`:''}
+        ${sp.lend>0?`<div class="grp"><div class="gname">The loan comes out of</div><div class="chips">
+          ${['personal','buffer','vault'].map(b=>{
+            const bal=st.buckets[b], empty=bal<=0;
+            return `<button class="chip ${lf===b?'on':''}" data-lf="${b}" ${empty?'disabled':''}>${
+              BUCKETS.find(x=>x.k===b).n} · ${fmt(bal)}</button>`;
+          }).join('')}</div></div>`:''}
+        ${feeField()}
+        <div class="fall">
+          ${sp.repay>0?`<div class="r"><span>Paying ${esc(nm)} back</span><span>${fmt(sp.repay)}</span></div>`:''}
+          ${sp.lend>0?`<div class="r"><span>Lending to ${esc(nm)}</span><span>${fmt(sp.lend)}</span></div>`:''}
+          <div class="r"><span>Counts as spending</span><span>No</span></div>
+          <div class="r"><span>Net worth change</span><span>0 — but see below</span></div>
+          ${(aS>0&&rNow!==null)?`<div class="r"><span>Your runway</span>
+            <span style="${danger?'color:var(--red)':caution?'color:var(--ochre)':''}">${rNow} days → ${rAfter} days</span></div>`:''}
+        </div>
+        ${aS>0?`<div class="truth ${danger?'bad':''}">${
+          sp.lend>0
+            ? (danger
+              ? `<b>Stop.</b> This leaves you ${rAfter} day${rAfter===1?'':'s'} of runway. Your net worth won't change —
+                 but net worth doesn't buy bread. You would be lending money you need to eat, and you will be back
+                 borrowing it within the week. ${sp.lend>srcBal?`You don't even have ${fmt(sp.lend)} in ${BUCKETS.find(x=>x.k===lf).n}.`:''}`
+              : caution
+              ? `Careful — this drops you to ${rAfter} days of runway. It's still your money, but it is no longer
+                 <em>reachable</em> money.`
+              : `This is <b>not an expense</b>. ${fmt(sp.lend)} stays yours — it moves to <b>Lent out</b> and stays in your
+                 net worth. It becomes a real loss only if ${esc(nm)} never pays it back.${
+                 st.youOwe>0?` <br/><br/>Note: you owe ${fmt(st.youOwe)} to others. Lending while you owe is borrowing from one person to fund another.`:''}`)
+            : `Paying ${esc(nm)} back. Cash down, debt down — net worth unchanged. You are trading money for freedom.`}</div>`:''}
+        ${attField()}
+        <button class="save ppl" id="rec" ${ready?'':'disabled'}>Record it</button>
+        <div class="hint" id="hint">${ready?'':'Still needed: '+miss.join(', ')}</div></div>`;
+    }
+
+    const isIn=mode==='in';
+    const ready=amt>0&&draft.tag&&draft.acct;
+    const miss=[]; if(!(amt>0))miss.push('amount');
+    if(!draft.tag)miss.push(isIn?'source':'category'); if(!draft.acct)miss.push('account');
+    const w=isIn?preview(aS):null;
+    const bkOpts=BUCKETS.filter(b=>b.k!=='payoff'&&b.k!=='lent'&&(b.k!=='borrowed'||st.buckets.borrowed>0));
+    return `<div class="form ${isIn?'earn':'spend'}">
+        ${editBanner()}
+      <input class="amt" id="amt" type="number" inputmode="decimal" placeholder="0" value="${draft.amt||''}"/>
+      <div class="lbl" style="margin-top:6px">Birr · ${esc(sel)}</div>
+      ${isIn?`<div class="grp"><div class="gname">Source</div><div class="chips">
+          ${INCOME_SRC.map(o=>`<button class="chip ${draft.tag===o?'on':''}" data-tag="${esc(o)}">${esc(o)}</button>`).join('')}
+        </div></div>`
+       :CATS.map(c=>`<div class="grp"><div class="gname">${c.g}</div><div class="chips">
+          ${c.items.map(o=>`<button class="chip ${draft.tag===o?'on':''}" data-tag="${esc(o)}">${esc(o)}</button>`).join('')}
+        </div></div>`).join('')}
+      <div class="grp"><div class="gname">${isIn?'Landed in':'Paid from'}</div><div class="chips">
+        ${ACCOUNTS.map(o=>`<button class="chip ${draft.acct===o?'on':''}" data-acct="${o}">${o}</button>`).join('')}</div></div>
+      ${!isIn?`<div class="grp"><div class="gname">Draw from bucket</div><div class="chips">
+        ${bkOpts.map(o=>{
+          const bal=st.buckets[o.k], empty=bal<=0 && o.k!=='borrowed';
+          return `<button class="chip ${(draft.bucket||defaultBucket(st))===o.k?'on':''}"
+            data-bk="${o.k}" ${empty?'disabled':''}>${o.n} · ${fmt(bal)}</button>`;
+        }).join('')}
+      </div></div>`:''}
+      ${!isIn?feeField():''}
+      <input class="note" id="note" placeholder="Note (optional)" value="${esc(draft.note||'')}"/>
+      ${isIn?`<div class="fall">${fallRows(w,st)}</div>`:''}
+      ${!isIn&&draft.bucket==='borrowed'?`<div class="truth bad">You are spending borrowed money.
+        Your net worth falls by <b>${fmt(aS)}</b> the moment you do — the money goes, the debt stays.</div>`:''}
+      ${attField()}
+      <button class="save ${isIn?'inflow':'danger'}" id="rec" ${ready?'':'disabled'}>
+        ${editId?'Save changes':(isIn?'Record — waterfall it':'Record spend')}</button>
+      <div class="hint" id="hint">${ready?'':'Still needed: '+miss.join(', ')}</div></div>`;
+  }
+
+  function fallRows(w,st){
+    if(!w) w={personal:0,buffer:0,vault:0};
+    const order=[['buffer','Buffer — fills to target'],
+                 ['vault','Vault — the rest, forever']];
+    return '<div class="lbl" style="margin-bottom:6px">Waterfall</div>'+
+      order
+        .map(o=>`<div class="r ${w[o[0]]?'':'z'}"><span>${o[1]}</span><span>${fmt(w[o[0]])}</span></div>`).join('');
+  }
+
+  function rowHTML(e){
+    const dt=new Date(fromKey(e.day)).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+    const isEd=editId===e.id;
+    const na=(e.att||[]).length;
+    const ctl=(na?`<button class="attb" data-att="${e.id}" title="Attachments">📎${na>1?na:''}</button>`:'')+
+      (RO()?'':`<button class="edt${isEd?' on':''}" data-edit="${e.id}" title="Edit">✎</button>
+      <button class="del" data-del="${e.id}" title="Delete">×</button>`);
+    const feeTag=e.fee>0?` · <span style="color:var(--red)">fee ${fmt(e.fee)}</span>`:'';
+    if(e.type==='xfer') return `<div class="row${isEd?' editing':''}"><div class="d">${dt}</div>
+      <div class="t">${esc(e.from)} → ${esc(e.to)}<small>Transfer · not income${feeTag}</small></div>
+      <div style="display:flex;align-items:baseline"><div class="a xf">⇄${fmt(e.amt)}</div>${ctl}</div></div>`;
+    if(e.type==='pin') return `<div class="row${isEd?' editing':''}"><div class="d">${dt}</div>
+      <div class="t">From ${esc(pName(e.person))}<small>${esc(e.acct)} · borrowed or paid back to you${feeTag}</small></div>
+      <div style="display:flex;align-items:baseline"><div class="a pp">⊕${fmt(e.amt)}</div>${ctl}</div></div>`;
+    if(e.type==='pout') return `<div class="row${isEd?' editing':''}"><div class="d">${dt}</div>
+      <div class="t">To ${esc(pName(e.person))}<small>${esc(e.acct)} · lent or paid back${feeTag}</small></div>
+      <div style="display:flex;align-items:baseline"><div class="a pp">⊖${fmt(e.amt)}</div>${ctl}</div></div>`;
+    const bk=BUCKETS.find(b=>b.k===e.bucket)||BUCKETS[0];
+    return `<div class="row${isEd?' editing':''}"><div class="d">${dt}</div>
+      <div class="t">${esc(e.note||e.tag)}<small>${esc(e.tag)} · ${esc(e.acct)}${e.type==='out'?' · '+bk.n:''}${feeTag}</small></div>
+      <div style="display:flex;align-items:baseline">
+        <div class="a ${e.type==='in'?'in':'out'}">${e.type==='in'?'+':'−'}${fmt(e.amt)}</div>${ctl}</div></div>`;
+  }
+
+  function groupBars(g,total){
+    if(!total) return '';
+    return ['Essential','Discretionary','Work'].filter(k=>g[k]>0).map(k=>{
+      const pct=Math.round((g[k]/total)*100);
+      return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div style="font-size:13px">${k}</div>
+          <div class="num" style="font-size:13px;font-weight:600">${fmt(g[k])}
+            <span style="color:var(--faint);font-weight:400">· ${pct}%</span></div></div>
+        <div class="bar"><i class="${k==='Discretionary'?'disc':(k==='Work'?'work':'')}" style="width:${pct}%"></i></div></div>`;
+    }).join('');
+  }
+
+  // ================= WEEK =================
+  function weekKeys(off){
+    const d=new Date(fromKey(today())); d.setDate(d.getDate()-((d.getDay()+6)%7)+off*7);
+    const o=[]; for(let i=0;i<7;i++) o.push(key(d.getTime()+i*DAY)); return o;
+  }
+  function viewWeek(st){
+    const cw=weekKeys(0), pw=weekKeys(-1);
+    const cur=db.entries.filter(e=>cw.indexOf(e.day)>=0);
+    const prev=db.entries.filter(e=>pw.indexOf(e.day)>=0);
+    const out=cur.filter(e=>e.type==='out').reduce((s,e)=>s+e.amt,0);
+    const inc=cur.filter(e=>e.type==='in').reduce((s,e)=>s+e.amt,0);
+    const fee=cur.reduce((s,e)=>s+(e.fee||0),0);   // fees ride on any transaction type, tracked independently
+    const pOut=prev.filter(e=>e.type==='out').reduce((s,e)=>s+e.amt,0);
+    const guard=hasFloor()?db.setup.floor/4.35:0, over=guard>0&&out>guard;
+    const withinAllowance=guard-out;   // real computation: this week's floor-share minus what actually left
+    const delta=pOut>0?Math.round(((out-pOut)/pOut)*100):null;
+    const days=cw.map(k=>({k,v:outOn(k),has:logged(k)}));
+    let max=1; days.forEach(x=>{if(x.v>max)max=x.v;});
+    return `
+      <div class="grid3">
+        <div class="cel"><div class="lbl">Earned</div><div class="v in">${fmt(inc)}</div></div>
+        <div class="cel"><div class="lbl">Spent</div><div class="v out">${fmt(out)}</div></div>
+        <div class="cel"><div class="lbl">vs last week</div>
+          <div class="v ${delta===null?'mute':(delta>0?'neg':'pos')}">${delta===null?'—':(delta>0?'+':'')+delta+'%'}</div></div>
+      </div>
+      ${guard>0?`<div class="compare">
+        <div class="cside">
+          <div class="lbl">Net</div>
+          <div class="cv ${inc-out>=0?'growth':'alert'}">${fmtS(inc-out)}</div>
+          <div class="cc">Earned minus spent — your total position, this week</div>
+        </div>
+        <div class="cdiv"></div>
+        <div class="cside">
+          <div class="lbl">Within allowance</div>
+          <div class="cv ${withinAllowance>=0?'allow':'alert'}">${fmtS(withinAllowance)}</div>
+          <div class="cc">Guardrail (${fmt(guard)}) minus spent — this week's cap, regardless of income</div>
+        </div>
+      </div>
+      <div class="lbl" style="margin:-4px 0 20px;line-height:1.6">
+        These can disagree — a good income week can hide an overspent allowance, and the reverse.</div>`:''}
+      ${fee>0?`<div class="lbl" style="margin:0 0 20px;line-height:1.6">
+        <span style="color:var(--red)">Fees this week — ${fmt(fee)}</span>, money lost to payment channels, on top of what you spent.</div>`:''}
+      ${peopleRow(st,cw[0],cw[6])}
+      <div class="sec"><h3><span>Spend by day</span><em>tap to open</em></h3>
+        <div class="wk">${days.map(x=>`<button data-day="${x.k}" title="${fmt(x.v)}">
+          <div class="b ${x.v===0?'zero':''} ${x.k===today()?'today':''}" style="height:${Math.max(2,(x.v/max)*100)}%"></div>
+        </button>`).join('')}</div>
+        <div class="wkx">${days.map(x=>`<div class="lbl" style="${x.has?'':'opacity:.35'}">
+          ${new Date(fromKey(x.k)).toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</div>`).join('')}</div>
+        ${guard?`<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:18px">
+            <div class="lbl">Weekly guardrail</div>
+            <div class="num" style="font-size:12px;${over?'color:var(--red);font-weight:600':''}">${fmt(out)} / ${fmt(guard)}</div></div>
+          <div class="bar"><i class="${over?'over':''}" style="width:${Math.min(100,(out/guard)*100)}%"></i></div>`
+          :`<div class="lbl" style="margin-top:16px">Set your floor to get a weekly guardrail.</div>`}
+      </div>
+      ${out?`<div class="sec"><h3><span>Essential vs choice</span></h3>${groupBars(byGroup(cur),out)}</div>`:''}
+      <div class="sec"><h3><span>This week, line by line</span><em>${cur.length}</em></h3>
+        ${cur.length?cur.slice().sort((a,x)=>fromKey(x.day)-fromKey(a.day)||(x.ts||0)-(a.ts||0)).map(rowHTML).join('')
+          :`<div class="empty">Nothing logged this week.</div>`}</div>`;
+  }
+
+  // ================= MONTH =================
+  function viewMonth(st){
+    const n=new Date(), y=n.getFullYear(), m=n.getMonth();
+    const dim=new Date(y,m+1,0).getDate(), dnow=n.getDate();
+    const keys=[]; for(let i=1;i<=dim;i++) keys.push(key(new Date(y,m,i).getTime()));
+    const cur=db.entries.filter(e=>keys.indexOf(e.day)>=0);
+    const inc=cur.filter(e=>e.type==='in').reduce((s,e)=>s+e.amt,0);
+    const out=cur.filter(e=>e.type==='out').reduce((s,e)=>s+e.amt,0);
+    const pi=cur.filter(e=>e.type==='pin').reduce((s,e)=>s+e.amt,0);
+    const po=cur.filter(e=>e.type==='pout').reduce((s,e)=>s+e.amt,0);
+    const fee=cur.reduce((s,e)=>s+(e.fee||0),0);   // fees ride on any transaction type, tracked independently
+    const perDay=out/dnow, projected=perDay*dim;
+    const rate=inc>0?Math.round(((inc-out)/inc)*100):null;
+    const cats=byCat(cur), maxCat=cats.length?cats[0][1]:1;
+    const big=cur.filter(e=>e.type==='out').sort((a,b)=>b.amt-a.amt).slice(0,5);
+    let maxD=1; keys.slice(0,dnow).forEach(k=>{const v=outOn(k); if(v>maxD) maxD=v;});
+    const lead=(new Date(y,m,1).getDay()+6)%7;
+    const overFloor=hasFloor()&&projected>db.setup.floor;
+    const proratedFloor=hasFloor()?db.setup.floor*dnow/dim:0;
+    const withinAllowance=proratedFloor-out;   // real computation: floor-to-date minus spent-to-date
+    let pads=''; for(let i=0;i<lead;i++) pads+='<div class="cd pad"></div>';
+    return `
+      <div class="grid3">
+        <div class="cel"><div class="lbl">Earned</div><div class="v in">${fmt(inc)}</div></div>
+        <div class="cel"><div class="lbl">Spent</div><div class="v out">${fmt(out)}</div></div>
+        <div class="cel"><div class="lbl">Keep rate</div>
+          <div class="v ${rate===null?'mute':(rate>=0?'pos':'neg')}">${rate===null?'—':rate+'%'}</div></div>
+      </div>
+      ${hasFloor()?`<div class="compare">
+        <div class="cside">
+          <div class="lbl">Kept</div>
+          <div class="cv ${inc-out>=0?'growth':'alert'}">${fmtS(inc-out)}</div>
+          <div class="cc">Earned minus spent — your total position, this month</div>
+        </div>
+        <div class="cdiv"></div>
+        <div class="cside">
+          <div class="lbl">Within allowance</div>
+          <div class="cv ${withinAllowance>=0?'allow':'alert'}">${fmtS(withinAllowance)}</div>
+          <div class="cc">${dnow}/${dim} of your floor (${fmt(proratedFloor)}) minus spent so far — pacing
+            ${withinAllowance>=0?'under':'over'}, independent of income</div>
+        </div>
+      </div>
+      <div class="lbl" style="margin:-4px 0 20px;line-height:1.6">
+        These can disagree — a good income month can hide an overspent allowance, and the reverse.</div>`:''}
+      ${fee>0?`<div class="lbl" style="margin:0 0 20px;line-height:1.6">
+        <span style="color:var(--red)">Fees this month — ${fmt(fee)}</span>, money lost to payment channels, on top of what you spent.</div>`:''}
+      ${peopleRow(st,keys[0],keys[keys.length-1])}
+      <div class="lbl" style="margin:-12px 0 22px">Borrowing is not earning. Lending is not spending. Both stay out of the numbers above.</div>
+      <div class="sec"><h3><span>Pace</span></h3>
+        <div style="display:flex;gap:30px;flex-wrap:wrap;margin-bottom:14px">
+          <div><div class="lbl">Per day so far</div><div class="num" style="font-size:17px;font-weight:600;margin-top:5px">${fmt(perDay)}</div></div>
+          <div><div class="lbl">Heading for</div><div class="num" style="font-size:17px;font-weight:600;margin-top:5px;${overFloor?'color:var(--red)':''}">${fmt(projected)}</div></div>
+          <div><div class="lbl">Your floor</div><div class="num" style="font-size:17px;font-weight:600;margin-top:5px;color:var(--faint)">${hasFloor()?fmt(db.setup.floor):'—'}</div></div>
+        </div>
+        ${hasFloor()?`<div class="bar"><i class="${overFloor?'over':'ok'}" style="width:${Math.min(100,(projected/db.setup.floor)*100)}%"></i></div>`:''}
+      </div>
+      <div class="sec"><h3><span>The month, day by day</span><em>tap any day</em></h3>
+        <div class="calx">${['M','T','W','T','F','S','S'].map(x=>`<div class="lbl">${x}</div>`).join('')}</div>
+        <div class="cal">${pads}${keys.map((k,i)=>{
+          const v=outOn(k), future=(i+1)>dnow, has=logged(k);
+          const a=future?0:(v>0?(0.10+0.68*(v/maxD)):(has?0.06:0));
+          return `<div class="cd ${(!future&&!has)?'miss':''}" data-day="${k}"
+            style="background:rgba(22,24,26,${a.toFixed(2)});${future?'opacity:.4':''}"
+            title="${k} · ${future?'—':fmt(v)}"><span>${i+1}</span></div>`;}).join('')}</div>
+        <div class="lbl" style="margin-top:8px">Dashed = never logged. Those days are holes in your plan.</div>
+      </div>
+      ${out?`<div class="sec"><h3><span>Essential vs choice</span></h3>${groupBars(byGroup(cur),out)}</div>`:''}
+      ${cats.length?`<div class="sec"><h3><span>Where it went</span></h3>
+        ${cats.map(c=>`<div style="margin-bottom:11px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div style="font-size:13px">${esc(c[0])}</div>
+            <div class="num" style="font-size:13px;font-weight:600">${fmt(c[1])}</div></div>
+          <div class="bar"><i class="${GROUP_OF[c[0]]==='Discretionary'?'disc':(GROUP_OF[c[0]]==='Work'?'work':'')}" style="width:${(c[1]/maxCat)*100}%"></i></div>
+        </div>`).join('')}</div>`:''}
+      ${big.length?`<div class="sec"><h3><span>Biggest five</span></h3>${big.map(rowHTML).join('')}</div>`:''}
+      ${!cur.length?`<div class="empty">No entries this month yet.</div>`:''}`;
+  }
+
+  // ================= PLAN =================
+  function viewReview(st){
+    const sel=reviewMode;
+    return `
+      <div class="revbar">
+        <button class="revtab ${sel==='week'?'on':''}" data-rev="week">Week</button>
+        <button class="revtab ${sel==='month'?'on':''}" data-rev="month">Month</button>
+      </div>
+      ${sel==='week'?viewWeek(st):viewMonth(st)}`;
+  }
+
+  function viewYear(st){
+    const rows=monthlyRollup();
+    if(!rows.length){
+      return `<div class="empty">No months to summarise yet.<br/>Log a few days and this fills in.</div>`;
+    }
+    const years=yearlyRollup(rows).slice(0,5);          // keep at most 5 years, newest first
+    const byYear={};
+    rows.forEach(r=>{ const y=r.month.slice(0,4); (byYear[y]||(byYear[y]=[])).push(r); });
+
+    // scale bars against the biggest single-month spend across everything shown
+    let mx=1; rows.forEach(r=>{ if(r.spent>mx)mx=r.spent; if(r.earned>mx)mx=r.earned; });
+    const kept=rows.filter(r=>r.net>0).length, over=rows.filter(r=>r.net<0).length;
+
+    const monthCard=r=>{
+      const w=v=>Math.max(0,Math.round((v/mx)*100));
+      const saved=r.net>=0;
+      const extra=[];
+      if(r.big) extra.push(`Biggest: <b>${esc(r.big.note||r.big.tag)}</b>${r.big.note?` <span class="mut">(${esc(r.big.tag)})</span>`:''} — <span class="amt">${fmt(r.big.amt)}</span>`);
+      if(r.fee>0) extra.push(`Fees this month — <span class="amt" style="color:var(--red)">${fmt(r.fee)}</span>`);
+      if(hasFloor()){
+        const d=r.personalOut-floorS(), over=d>0;
+        extra.push(`Personal cap — <span class="amt" style="color:${over?'var(--red)':'var(--green)'}">${
+          over?fmt(d)+' over':fmt(Math.abs(d))+' under'}</span>`);
+      }
+      return `<div class="ym">
+        <div class="ymh"><div class="ymname">${mLabel(r.month)}</div>
+          <div class="ymnet ${saved?'pos':'neg'}">${saved?'saved ':'over '}${fmt(Math.abs(r.net))}</div></div>
+        <div class="ymgrid">
+          <div class="yl">Earned</div>   <div class="yb"><i class="ern" style="width:${w(r.earned)}%"></i></div><div class="yv in">${fmt(r.earned)}</div>
+          <div class="yl">Spent</div>    <div class="yb"><i class="spt" style="width:${w(r.spent)}%"></i></div><div class="yv out">${fmt(r.spent)}</div>
+          <div class="yl sub">· Personal</div><div class="yb"><i class="ess" style="width:${w(r.ess)}%"></i></div><div class="yv">${fmt(r.ess)}</div>
+          <div class="yl sub">· Choice</div>  <div class="yb"><i class="dsc" style="width:${w(r.disc)}%"></i></div><div class="yv">${fmt(r.disc)}</div>
+          <div class="yl sub">· Work</div>    <div class="yb"><i class="wrk" style="width:${w(r.work)}%"></i></div><div class="yv">${fmt(r.work)}</div>
+        </div>
+        ${extra.map((l,i)=>`<div class="ymbig" style="${i>0?'border-top:0;padding-top:2px':''}">${l}</div>`).join('')}
+      </div>`;
+    };
+
+    return `
+      <div class="conf"><span class="tagx">Year view</span> — every month you have logged, grouped by year.
+        Newest first. ${rows.length} month${rows.length===1?'':'s'} recorded ·
+        <b>${kept}</b> in surplus, <b>${over}</b> over. Money to and from people is excluded — this is
+        earning vs spending only.</div>
+
+      ${years.map(y=>{
+        const ms=(byYear[y.year]||[]).slice().sort((a,b)=>a.month<b.month?1:-1);   // newest month first
+        const saved=y.net>=0;
+        const keepRate=y.earned>0?Math.round((y.net/y.earned)*100):null;
+        return `<div class="sec">
+          <div class="yh"><div class="yr">${y.year}</div><div class="tag2 ${saved?'saved':'over'}">${saved?'saved ':'over '}${fmt(Math.abs(y.net))}</div></div>
+          <div class="ytot">
+            <div class="ycell"><div class="lbl">Earned</div><div class="v in">${fmt(y.earned)}</div></div>
+            <div class="ycell"><div class="lbl">Spent</div><div class="v out">${fmt(y.spent)}</div></div>
+            <div class="ycell"><div class="lbl">${saved?'Saved':'Over'}</div><div class="v ${saved?'pos':'neg'}">${fmt(Math.abs(y.net))}</div></div>
+            <div class="ycell"><div class="lbl">Keep rate</div><div class="v ${keepRate===null?'mute':(keepRate>=0?'pos':'neg')}">${keepRate===null?'—':keepRate+'%'}</div></div>
+          </div>
+          <div class="ybreak"><div class="lbl">Year split</div>
+            <div class=" br"><span>Personal</span><span class="num">${fmt(y.ess)}</span></div>
+            <div class="br"><span>Choice</span><span class="num">${fmt(y.disc)}</span></div>
+            <div class="br"><span>Work</span><span class="num">${fmt(y.work)}</span></div>
+            ${y.fee>0?`<div class="br"><span style="color:var(--red)">Fees</span><span class="num" style="color:var(--red)">${fmt(y.fee)}</span></div>`:''}
+          </div>
+          ${ms.map(monthCard).join('')}
+        </div>`;
+      }).join('')}
+
+      ${yearlyRollup(rows).length>5?`<div class="conf" style="margin-top:6px">Showing the most recent 5 years.
+        Older years are summarised in your data but hidden here.</div>`:''}`;
+  }
+
+  function viewPlan(st){
+    const c=coverage();
+    const outs=db.entries.filter(e=>e.type==='out');
+    const ins=db.entries.filter(e=>e.type==='in');
+
+    if(c.cov<7){
+      return `<div class="conf bad"><span class="tagx">Not ready</span><br/>
+        This page is arithmetic on your daily log and nothing else. It needs <b>7 logged days</b> before it will speak.
+        <br/><br/>Logged so far: <b>${c.cov} day${c.cov===1?'':'s'}</b>. Use the ‹ › arrows on the Day tab to fill in
+        past days from bank SMS and receipts.</div>`;
+    }
+
+    const conf=(c.pct>=85&&c.span>=45)?'Reliable':(c.pct>=70&&c.span>=21)?'Working':'Provisional';
+    const thin=c.pct<70;
+    const life=outs.filter(e=>GROUP_OF[e.tag]!=='Work').reduce((s,e)=>s+e.amt,0);
+    const realDaily=life/c.cov, realMonthly=realDaily*30.4;
+    const stated=db.setup.floor, gap=realMonthly-stated;
+    const totalOut=outs.reduce((s,e)=>s+e.amt,0);
+    const g=byGroup(outs);
+    const discPct=totalOut>0?Math.round((g.Discretionary/totalOut)*100):0;
+    const totalIn=ins.reduce((s,e)=>s+e.amt,0);
+    const monthlyIn=totalIn/(c.span/30.4);
+    const surplus=monthlyIn-realMonthly;
+    const bT=bufTarget();
+    const bufPct=bT>0?Math.min(100,Math.round((st.buckets.buffer/bT)*100)):0;
+
+    const owe=db.people.map(x=>({...x,b:st.people[x.id]||0})).filter(x=>x.b<0)
+      .map(x=>({...x,amt:-x.b})).sort((a,b)=>a.amt-b.amt);
+    const lent=db.people.map(x=>({...x,b:st.people[x.id]||0})).filter(x=>x.b>0)
+      .sort((a,b)=>b.b-a.b);
+    const monthsToClear=surplus>0&&st.youOwe>0?Math.ceil(st.youOwe/surplus):null;
+    const owedMonths=monthlyIn>0?(st.youOwe/monthlyIn):null;
+    const unspent=st.buckets.borrowed;
+    const cats=byCat(outs), topCat=cats[0];
+    const cut20=topCat?Math.round((topCat[1]/c.cov)*365*0.2):0;
+
+    return `
+      <div class="conf ${thin?'bad':''}">
+        <span class="tagx">${conf}</span> — from <b>${c.cov} logged days</b> of ${c.span} (${c.pct}% coverage),
+        ${db.entries.length} entries. Money to and from people is excluded from income and spending.
+        ${thin?'<br/><br/>Coverage under 70%. Unlogged days drag these numbers <b>down</b> — your real cost is likely higher than shown.':''}
+      </div>
+
+      <div class="plan ${st.netWorth<0?'alert':'good'}">
+        <div class="h"><div class="k">Net worth — what you are worth</div>
+          <div class="n ${st.netWorth<0?'rev':'ok'}">${fmtS(st.netWorth)}</div></div>
+        <p>${fmtS(st.cash)} in pocket${st.lentOut?`, ${fmt(st.lentOut)} lent out`:''}${st.youOwe?`, ${fmt(st.youOwe)} owed`:''}.
+          ${st.netWorth<0?'You owe more than you own. Until this crosses zero, nothing else here matters.'
+            :st.youOwe?'Positive — but not everything in your hand is yours.'
+            :'You owe nobody. Everything you hold is yours.'}</p>
+      </div>
+
+      <div class="plan ${st.reachable<realMonthly/4?'alert':''}">
+        <div class="h"><div class="k">Spendable — what you can actually pay with</div>
+          <div class="n ${st.reachable<realMonthly/4?'rev':'dim'}">${fmt(st.reachable)}</div></div>
+        <p>${st.lentOut>0
+          ? `You are <b>worth ${fmtS(st.netWorth)}</b> but can only <b>reach ${fmt(st.reachable)}</b>. The gap is money lent out and money already committed elsewhere. These are two different questions, and confusing them is how people with money on paper end up borrowing for groceries.`
+          : `Personal money within reach. Net worth answers "am I solvent". This answers "can I eat this week". Never use the first to decide the second.`}
+          ${st.reachable<realMonthly/4?`<br/><br/><b>This is under a week of living costs.</b>${st.lentOut>0?` Collect what is owed to you before you touch the Buffer.`:''}`:''}</p>
+      </div>
+
+      ${owe.length?`
+      <div class="plan alert">
+        <div class="h"><div class="k">You owe</div><div class="n rev">${fmt(st.youOwe)}</div></div>
+        <div style="margin-top:11px">${owe.map((x,i)=>`<div class="ord">
+          <div><span class="rk">${i+1}</span>${esc(x.name)}</div>
+          <div class="rt owe">${fmt(x.amt)}</div></div>`).join('')}</div>
+        <p>${owedMonths!==null?`That is <b>${owedMonths.toFixed(1)} months</b> of your income. `:''}
+          Clear the smallest first. There's no interest, so no arithmetic picks the order — what matters is getting
+          names <em>off the list</em>. Each one cleared is a person you can go back to. That is the only credit line you have.
+          ${unspent>0?`<br/><br/><b>${fmt(unspent)} of borrowed money is still unspent.</b> Hand it straight back — held onto, it quietly becomes groceries.`:''}</p>
+      </div>
+      <div class="plan">
+        <div class="h"><div class="k">Clear of debt in</div>
+          <div class="n ${monthsToClear!==null?'dim':'rev'}">${monthsToClear!==null?monthsToClear+' mo':'never'}</div></div>
+        <p>${monthsToClear!==null
+          ? `At your current overflow of ~<b>${fmt(surplus)}/month</b>, everything you owe is gone in <b>${monthsToClear} month${monthsToClear===1?'':'s'}</b> — provided you don't borrow again in between.`
+          : `Your income doesn't yet cover your spending, so <b>nothing</b> is going to repayment. You are on course to borrow again. Fix this before anything else on this page is worth reading.`}</p>
+      </div>`:''}
+
+      ${lent.length?`
+      <div class="plan warm">
+        <div class="h"><div class="k">Owed to you</div><div class="n warm">${fmt(st.lentOut)}</div></div>
+        <div style="margin-top:11px">${lent.map((x,i)=>`<div class="ord">
+          <div><span class="rk">${i+1}</span>${esc(x.name)}</div>
+          <div class="rt owed">${fmt(x.b)}</div></div>`).join('')}</div>
+        <p>This is <b>your money</b>, counted in your net worth — but you cannot spend it, and it earns you nothing.
+          ${st.lentOut>realMonthly?`It is more than a month of your living costs sitting outside your reach. `:''}
+          ${st.youOwe>0?`You owe ${fmt(st.youOwe)} while ${fmt(st.lentOut)} is out with others. Collect before you borrow again.`
+            :`Ask for it back before you dip into Buffer — that is what it is there to prevent.`}</p>
+      </div>`:''}
+
+      <div class="plan ${stated>0&&gap>0?'alert':'good'}">
+        <div class="h"><div class="k">What your life actually costs</div>
+          <div class="n ${stated>0&&gap>0?'rev':'ok'}">${fmt(realMonthly)}<span style="font-size:11px;color:var(--faint)">/mo</span></div></div>
+        <p>${stated<=0?'Measured from your log.'
+          :gap>0?`<b>${fmt(gap)} more</b> than the ${fmt(stated)} floor you set. The waterfall is filling Personal to the wrong level.`
+                :`<b>${fmt(-gap)} under</b> the floor you set.`}
+          Real daily burn ${fmt(realDaily)}; work costs excluded.</p>
+        ${Math.abs(gap)>stated*0.05?`<button class="act" id="setfloor" data-v="${Math.round(realMonthly)}">Set floor to ${fmt(realMonthly)}</button>`:''}
+      </div>
+
+      <div class="plan allow">
+        <div class="h"><div class="k">Pay yourself this, twice a month</div>
+          <div class="n dim">${fmt(realMonthly*1.1/2)}<span style="font-size:11px;color:var(--faint)"> ×2</span></div></div>
+        <p>${fmt(realMonthly*1.1)} a month — your real cost plus 10% headroom — moved out of Personal on the 1st and
+          the 15th. Fixed. Not "what's left". Lumpy income only becomes livable when the withdrawal stops being lumpy
+          too, and the waterfall already caps Personal at your floor so the extra never reaches your hand.</p>
+      </div>
+
+      <div class="plan ${bufPct>=100?'good':''}">
+        <div class="h"><div class="k">Buffer — ${db.setup.bufferMonths} months of survival</div>
+          <div class="n ${bufPct>=100?'ok':''}">${fmt(st.buckets.buffer)}<span style="font-size:12px;color:var(--faint)"> / ${fmt(bT)}</span></div></div>
+        <div class="bar" style="margin-top:9px"><i style="width:${bufPct}%"></i></div>
+        <p>One month goes in first, before any repayment — without it, the next bad week just becomes another loan.
+          After that, what you owe comes first, then the rest of the buffer.
+          ${surplus>0?`~${fmt(surplus)} overflows each month.`:'Nothing is overflowing yet.'}</p>
+      </div>
+
+      <div class="plan ${discPct>30?'alert':''}">
+        <div class="h"><div class="k">Choice vs necessity</div><div class="n ${discPct>30?'rev':''}">${discPct}%</div></div>
+        <div class="bar" style="margin-top:9px"><i class="disc" style="width:${discPct}%"></i></div>
+        <p>${discPct>30?`Above 30% is where project-income earners get caught — it doesn't shrink when the work stops. This is the cuttable money${owe.length?', and it is what clears the list fastest':''}.`
+          :'Disciplined. Your problem is on the income side, not lifestyle.'}</p>
+      </div>
+
+      ${topCat?`<div class="plan"><div class="h"><div class="k">Biggest line: ${esc(topCat[0])}</div>
+        <div class="n">${fmt(cut20)}<span style="font-size:11px;color:var(--faint)">/yr</span></div></div>
+        <p>Cut it by one fifth and you free <b>${fmt(cut20)} a year</b>.</p></div>`:''}
+
+      <div class="plan ${owe.length?'':'good'}">
+        <div class="h"><div class="k">Vault</div>
+          <div class="n ${owe.length?'rev':'ok'}">${owe.length?'On hold':fmt(st.buckets.vault)}</div></div>
+        <p>${owe.length
+          ? `You owe ${fmt(st.youOwe)}. Building a Vault while people are waiting to be paid back isn't wealth — it's money sitting next to an obligation. The waterfall sends the overflow to Payoff instead. The Vault opens the day the list is empty.`
+          : `Once the Buffer is full, move the Vault into 91-day treasury bills (minimum 5,000 birr, around ${TBILL}%) rather than a savings account — cash in a savings account loses to inflation every month it sits there.`}</p>
+      </div>`;
+  }
+
+  // ---------- events ----------
+  function wire(){
+    const $=id=>document.getElementById(id);
+    document.querySelectorAll('.nav button').forEach(x=>{x.onclick=()=>{tab=x.dataset.t;mode=null;editId=null;pplView=null;render();};});
+    document.querySelectorAll('[data-rev]').forEach(x=>{x.onclick=()=>{ reviewMode=x.dataset.rev; animate=true; render(); };});
+    document.querySelectorAll('[data-day]').forEach(x=>{x.onclick=()=>{sel=x.dataset.day;tab='day';mode=null;editId=null;render();};});
+
+    if($('c_addp')) $('c_addp').onclick=()=>{ syncCfg(); cfg.people.push({id:uid(),name:'',mag:0,neg:true}); render(); };
+    document.querySelectorAll('[data-px]').forEach(x=>{x.onclick=()=>{ syncCfg(); cfg.people.splice(+x.dataset.px,1); render(); };});
+    document.querySelectorAll('[data-pd]').forEach(x=>{x.onclick=()=>{ syncCfg();
+      const i=+x.dataset.pd; cfg.people[i].neg=!cfg.people[i].neg; render(); };});
+    if($('c_save')) $('c_save').onclick=async()=>{
+      syncCfg();
+      const f=parseFloat(cfg.floor), bm=parseInt(cfg.bm,10);
+      if(isNaN(f)||f<=0){ cfgErr='Enter your monthly personal cost — a number greater than 0.'; render(); return; }
+      if(isNaN(bm)||bm<1||bm>24){ cfgErr='Buffer target must be between 1 and 24 months.'; render(); return; }
+      const op={};
+      for(const a of ACCOUNTS){
+        const raw=cfg.opening[a]===''?0:parseFloat(cfg.opening[a]);
+        if(isNaN(raw)||raw<0){ cfgErr='Balances must be 0 or more.'; render(); return; }
+        op[a]=Math.round(raw*S);
+      }
+      for(const x of cfg.people){ if(!String(x.name||'').trim()){ cfgErr='Every person needs a name.'; render(); return; } }
+      const prevEnv=db.setup.envStart;
+      db.setup={floor:Math.round(f*S),bufferMonths:bm,opening:op,
+                envStart: prevEnv || today()};              // stamp envelope start on first save
+      db.people=cfg.people.map(x=>{
+        const was=db.people.find(y=>y.id===x.id);
+        const opening=x.neg?-x.mag:x.mag;
+        return {id:x.id,name:String(x.name).trim(),opening,
+                originBucket: opening>0 ? (was&&was.originBucket ? was.originBucket : 'buffer') : undefined};
+      });
+      cfgErr=''; editing=false; cfg=null; await save(); render();
+    };
+    if($('c_cancel')) $('c_cancel').onclick=()=>{ editing=false; cfgErr=''; cfg=null; render(); };
+    if($('setfloor')) $('setfloor').onclick=async()=>{ db.setup.floor=parseInt($('setfloor').dataset.v,10); await save(); render(); };
+
+    if($('prev')) $('prev').onclick=()=>{sel=shift(sel,-1);mode=null;render();};
+    if($('next')) $('next').onclick=()=>{if(sel!==today()){sel=shift(sel,1);mode=null;render();}};
+    if($('jt'))   $('jt').onclick=()=>{sel=today();mode=null;render();};
+
+    if($('m_in'))  $('m_in').onclick =()=>{editId=null; mode=(mode==='in')?null:'in';   draft={acct:'Bank'};focusAmt=!!mode;render();};
+    if($('m_out')) $('m_out').onclick=()=>{editId=null; mode=(mode==='out')?null:'out'; draft={acct:'Cash',bucket:defaultBucket(state())};focusAmt=!!mode;render();};
+    if($('m_xf'))  $('m_xf').onclick =()=>{editId=null; mode=(mode==='xfer')?null:'xfer';draft={from:'Bank',to:'telebirr'};focusAmt=!!mode;render();};
+    if($('m_pi'))  $('m_pi').onclick =()=>{editId=null; mode=(mode==='pin')?null:'pin';
+      draft={acct:'Cash',person:db.people.length?db.people[0].id:'__new'};focusAmt=!!mode;render();};
+    if($('m_po'))  $('m_po').onclick =()=>{editId=null; mode=(mode==='pout')?null:'pout';
+      draft={acct:'Cash',lendFrom:defaultBucket(state()),person:db.people.length?db.people[0].id:'__new'};focusAmt=!!mode;render();};
+
+    if($('zero'))   $('zero').onclick=async()=>{if(db.zero.indexOf(sel)<0)db.zero.push(sel);await save();render();};
+    if($('gofirst')) $('gofirst').onclick=()=>{ const bp=blankPastDays(); if(bp.length){ sel=bp[0]; mode=null; editId=null; render(); window.scrollTo(0,0);} };
+    if($('fillzero')) $('fillzero').onclick=async()=>{
+      const bp=blankPastDays();
+      if(!bp.length) return;
+      if(!confirm('Mark all '+bp.length+' blank day(s) before today as no-spend? Do this only for days you are sure had zero spending.')) return;
+      for(const dkey of bp){ if(db.zero.indexOf(dkey)<0) db.zero.push(dkey); }
+      await save(); render();
+    };
+    if($('unzero')) $('unzero').onclick=async()=>{db.zero=db.zero.filter(z=>z!==sel);await save();render();};
+
+    document.querySelectorAll('[data-rep]').forEach(x=>{x.onclick=async()=>{
+      const p=x.dataset.rep.split('|');
+      db.zero=db.zero.filter(z=>z!==sel);
+      db.entries.push({id:uid(),day:sel,ts:Date.now(),type:'out',amt:parseInt(p[1],10),tag:p[0],acct:p[2],bucket:defaultBucket(state()),note:''});
+      await save(); render();};});
+
+    const amt=$('amt');
+    if(amt){
+      amt.oninput=()=>{draft.amt=amt.value; animate=false; focusAmt=true; render();};
+      if(focusAmt){
+        amt.focus();
+        const v=amt.value; amt.value=''; amt.value=v;
+        focusAmt=false;
+      }
+      if($('note'))  $('note').oninput=e=>{draft.note=e.target.value;};
+      if($('fee')){
+        $('fee').oninput=e=>{draft.fee=e.target.value; focusFee=true; render();};
+        if(focusFee){
+          const fe=$('fee'); fe.focus();
+          const v=fe.value; fe.value=''; fe.value=v;
+          focusFee=false;
+        }
+      }
+      if($('p_new')) $('p_new').oninput=e=>{draft.pName=e.target.value;
+        const b=document.getElementById('rec');
+        if(b) b.disabled=!(parseFloat(draft.amt||0)>0&&draft.acct&&e.target.value.trim());};
+      document.querySelectorAll('[data-tag]').forEach(c=>{c.onclick=()=>{animate=false; draft.tag=c.dataset.tag;render();};});
+      document.querySelectorAll('[data-acct]').forEach(c=>{c.onclick=()=>{animate=false; draft.acct=c.dataset.acct;render();};});
+      document.querySelectorAll('[data-bk]').forEach(c=>{c.onclick=()=>{animate=false; draft.bucket=c.dataset.bk;render();};});
+      document.querySelectorAll('[data-lf]').forEach(c=>{c.onclick=()=>{draft.lendFrom=c.dataset.lf;render();};});
+      document.querySelectorAll('[data-per]').forEach(c=>{c.onclick=()=>{animate=false; draft.person=c.dataset.per;render();};});
+      document.querySelectorAll('[data-from]').forEach(c=>{c.onclick=()=>{ animate=false;
+        draft.from=c.dataset.from; if(draft.to===draft.from) draft.to=null; render();};});
+      document.querySelectorAll('[data-to]').forEach(c=>{c.onclick=()=>{animate=false; draft.to=c.dataset.to;render();};});
+      if($('rec')) $('rec').onclick=record;
+      if(draft.busy&&$('rec')){ $('rec').disabled=true; $('rec').textContent='Uploading…'; }
+      if($('attf')) $('attf').onchange=async e=>{
+        const files=Array.from(e.target.files||[]); draft.attErr='';
+        for(const f of files){
+          if(attCount()>=ATT_LIMIT){ draft.attErr='Up to '+ATT_LIMIT+' files per entry.'; break; }
+          try{ (draft.newFiles=draft.newFiles||[]).push(await prepFile(f)); }
+          catch(err){ draft.attErr=err.message||'Could not use that file.'; }
+        }
+        animate=false; render();
+      };
+      document.querySelectorAll('[data-attx]').forEach(x=>{x.onclick=()=>{
+        const w=x.dataset.attx, i=+w.slice(1);
+        if(w[0]==='a') draft.att.splice(i,1); else draft.newFiles.splice(i,1);
+        animate=false; render();};});
+    }
+    document.querySelectorAll('[data-att]').forEach(x=>{x.onclick=()=>openAtt(x.dataset.att);});
+    if($('retry')) $('retry').onclick=async()=>{ await save(); render(); };
+    if($('out'))  $('out').onclick=()=>{ if(confirm('Log out of this device?')) signOut(''); };
+    if($('acct')) $('acct').onclick=()=>{ panel='acct'; panelErr=''; render(); };
+    if($('usr'))  $('usr').onclick=openUsers;
+    if($('u_audit')) $('u_audit').onclick=openAudit;
+    document.querySelectorAll('[data-uview]').forEach(x=>{x.onclick=()=>{
+      const u=usersList.find(v=>v.id===x.dataset.uview); if(u) enterViewAs(u);};});
+    document.querySelectorAll('.backAdminBtn').forEach(x=>{x.onclick=exitViewAs;});
+    const closePanel=()=>{ panel=null; attView=null; newCred=null; auditList=null; render(); };
+    if($('p_x')) $('p_x').onclick=closePanel;
+    if($('ovlp')) $('ovlp').onclick=e=>{ if(e.target.id==='ovlp') closePanel(); };
+    if($('a_go')) $('a_go').onclick=async()=>{
+      const cur=$('a_cur').value, n1=$('a_new').value, n2=$('a_new2').value, m=$('a_msg');
+      m.style.color='var(--red)';
+      if(n1!==n2){ m.textContent='The new passwords do not match.'; return; }
+      if(n1.length<8){ m.textContent='New password must be at least 8 characters.'; return; }
+      $('a_go').disabled=true;
+      const r=await RPC('changePassword',{current:cur,next:n1});
+      $('a_go').disabled=false;
+      if(!r.ok){ m.textContent=r.msg||'Could not change the password.'; return; }
+      token=r.data.token; lsSet(TOKENKEY,token);
+      m.style.color='var(--green)'; m.textContent='✓ Password changed.';
+      $('a_cur').value=$('a_new').value=$('a_new2').value='';
+    };
+    if($('u_add')) $('u_add').onclick=async()=>{
+      const name=$('u_name').value.trim(), user=$('u_user').value.trim(), m=$('u_msg');
+      m.style.color='var(--red)';
+      if(!user){ m.textContent='Enter a username.'; return; }
+      $('u_add').disabled=true;
+      const r=await RPC('createUser',{name,username:user});
+      $('u_add').disabled=false;
+      if(!r.ok){ m.textContent=r.msg||'Could not create the user.'; return; }
+      newCred={label:'New user created',username:r.data.user.username,password:r.data.password};
+      panelErr=''; const l=await RPC('listUsers'); if(l.ok) usersList=l.data; render();
+    };
+    document.querySelectorAll('[data-ures]').forEach(x=>{x.onclick=async()=>{
+      const u=usersList.find(v=>v.id===x.dataset.ures);
+      if(!confirm('Reset the password for '+u.username+'? They will be signed out everywhere.')) return;
+      const r=await RPC('resetPassword',{userId:u.id});
+      if(!r.ok){ panelErr=r.msg||'Could not reset.'; render(); return; }
+      newCred={label:'Password reset',username:u.username,password:r.data.password}; panelErr=''; render();};});
+    document.querySelectorAll('[data-uact]').forEach(x=>{x.onclick=async()=>{
+      const u=usersList.find(v=>v.id===x.dataset.uact), on=x.dataset.on==='1';
+      if(!on&&!confirm('Disable '+u.username+'? They will be signed out. Their data is kept.')) return;
+      const r=await RPC('setActive',{userId:u.id,active:on});
+      if(!r.ok){ panelErr=r.msg||'Could not update.'; render(); return; }
+      const l=await RPC('listUsers'); if(l.ok) usersList=l.data; panelErr=''; render();};});
+
+    document.querySelectorAll('[data-del]').forEach(x=>{x.onclick=async()=>{
+      if(editId===x.dataset.del){ editId=null; mode=null; draft={}; }
+      db.entries=db.entries.filter(e=>e.id!==x.dataset.del); await save(); render();};});
+
+    document.querySelectorAll('[data-edit]').forEach(x=>{x.onclick=()=>{
+      const e=db.entries.find(v=>v.id===x.dataset.edit); if(!e) return;
+      if(editId===e.id){ editId=null; mode=null; draft={}; render(); return; }   // tap again = cancel
+      editId=e.id; sel=e.day; tab='day'; mode=e.type; focusAmt=true;
+      draft={amt:String(e.amt/S), att:(e.att||[]).slice(), newFiles:[]};
+      if(e.fee>0) draft.fee=String(e.fee/S);
+      if(e.type==='xfer'){ draft.from=e.from; draft.to=e.to; }
+      else if(e.type==='pin'||e.type==='pout'){ draft.person=e.person; draft.acct=e.acct;
+        if(e.type==='pout'){ draft.lendFrom=e.lendFrom||'personal'; } }
+      else { draft.tag=e.tag; draft.acct=e.acct; draft.note=e.note||'';
+        if(e.type==='out') draft.bucket=e.bucket||'personal'; }
+      render(); window.scrollTo(0,0);
+    };});
+
+    document.querySelectorAll('[data-ppl]').forEach(x=>{x.onclick=()=>{
+      animate=false;
+      pplView = (pplView===x.dataset.ppl) ? null : x.dataset.ppl;
+      render();
+    };});
+    if($('theme')) $('theme').onclick=async()=>{
+      theme = (theme==='viewport') ? 'vellum' : 'viewport';
+      lsSet(THEMEKEY, theme);
+      render();
+    };
+    $('exp').onclick=exportCsv;
+    const markedBackedUp=async()=>{ db.lastBackup=Date.now(); await save(); };
+    const saveFile=()=>{
+      const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url; a.download='birr-ledger-backup-'+today()+'.json'; a.click();
+      URL.revokeObjectURL(url);
+    };
+    const openBackup=()=>{ showBackup=true; showRestore=false; render(); };
+    if($('bak')) $('bak').onclick=openBackup;
+    if($('baknow')) $('baknow').onclick=openBackup;
+    if($('imp')) $('imp').onclick=()=>{ showRestore=true; showBackup=false; render(); };
+
+    // ---- backup overlay ----
+    if($('bk_x'))  $('bk_x').onclick=()=>{ showBackup=false; render(); };
+    if($('ovl'))   $('ovl').onclick=e=>{ if(e.target.id==='ovl'){ showBackup=false; render(); } };
+    if($('bk_copy')) $('bk_copy').onclick=async()=>{
+      const ta=$('bk_text'); let done=false;
+      try{ await navigator.clipboard.writeText(ta.value); done=true; }
+      catch(e){ try{ ta.focus(); ta.select(); done=document.execCommand('copy'); }catch(_){} }
+      const m=$('bk_msg');
+      if(done){ if(m){ m.textContent='✓ Copied. Paste it somewhere safe now.'; m.style.color='var(--green)'; } await markedBackedUp(); }
+      else if(m){ m.textContent='Select the text above and copy it manually (long-press → Copy).'; m.style.color='var(--ochre)'; }
+    };
+    if($('bk_file')) $('bk_file').onclick=async()=>{ saveFile(); await markedBackedUp();
+      const m=$('bk_msg'); if(m){ m.textContent='If a "keep file?" prompt appears, choose Keep — it is safe.'; m.style.color='var(--ochre)'; } };
+
+    // ---- restore overlay ----
+    const applyRestore=async(rawText,fromFile)=>{
+      const msg=$('rs_msg');
+      try{
+        const j=JSON.parse(rawText);
+        if(!j||!Array.isArray(j.entries)) throw 0;
+        if(!confirm('Replace everything currently in the ledger with this backup?')) return;
+        normalize(j);
+        sel=today(); editing=false; cfg=null; mode=null; editId=null; showRestore=false;
+        await save(); render();
+      }catch(err){ if(msg){ msg.textContent=fromFile?'That file is not a ledger backup.':'That text is not a valid backup.'; msg.style.color='var(--red)'; } }
+    };
+    if($('rs_x')) $('rs_x').onclick=()=>{ showRestore=false; render(); };
+    if($('ovlr')) $('ovlr').onclick=e=>{ if(e.target.id==='ovlr'){ showRestore=false; render(); } };
+    if($('rs_go')) $('rs_go').onclick=()=>{ const t=$('rs_text').value.trim();
+      if(!t){ const m=$('rs_msg'); if(m){ m.textContent='Paste your backup text first.'; m.style.color='var(--ochre)'; } return; }
+      applyRestore(t,false); };
+    if($('rs_file')) $('rs_file').onclick=()=>$('impf').click();
+    $('impf').onchange=e=>{
+      const f=e.target.files&&e.target.files[0]; if(!f) return;
+      const r=new FileReader();
+      r.onload=()=>applyRestore(r.result,true);
+      r.readAsText(f);
+    };
+    if($('edit')) $('edit').onclick=()=>{editing=true;cfgErr='';cfg=null;tab='day';render();window.scrollTo(0,0);};
+    if($('reset')) $('reset').onclick=async()=>{
+      if(!confirm('Erase everything and start over? This cannot be undone.')) return;
+      db={setup:{floor:0,bufferMonths:3,opening:{},envStart:null},entries:[],zero:[],people:[]};
+      ACCOUNTS.forEach(a=>db.setup.opening[a]=0);
+      sel=today(); editing=false; cfg=null; await save(); render();};
+  }
+
+  function syncCfg(){
+    if(!cfg) return;
+    const g=id=>{const e=document.getElementById(id); return e?e.value:undefined;};
+    const f=g('c_floor'); if(f!==undefined) cfg.floor=f;
+    const b=g('c_bm');    if(b!==undefined) cfg.bm=b;
+    ACCOUNTS.forEach(a=>{ const v=g('c_o_'+a); if(v!==undefined) cfg.opening[a]=v; });
+    document.querySelectorAll('.p_n').forEach(i=>{ cfg.people[+i.dataset.i].name=i.value; });
+    document.querySelectorAll('.p_a').forEach(i=>{ cfg.people[+i.dataset.i].mag=Math.round((parseFloat(i.value)||0)*S); });
+  }
+
+  async function record(){
+    const a=toS(draft.amt);
+    if(!(a>0)||draft.busy) return;
+    // Upload staged files first: if one fails nothing else has changed, and files already uploaded stay
+    // attached to the draft so a retry does not upload them twice.
+    if(draft.newFiles&&draft.newFiles.length){
+      draft.busy=true; draft.attErr=''; animate=false; render();
+      draft.att=draft.att||[];
+      while(draft.newFiles.length){
+        const f=draft.newFiles[0];
+        const r=await RPC('upload',{name:f.name,mime:f.mime,b64:f.b64});
+        if(!r.ok){ draft.busy=false; draft.attErr=(r.code==='AUTH')?'':(f.name+': '+(r.msg||'upload failed')); if(db) render(); return; }
+        draft.att.push({fileId:r.data.fileId,name:r.data.name,mime:r.data.mime,size:r.data.size});
+        draft.newFiles.shift();
+      }
+      draft.busy=false;
+    }
+    const st=state();
+    db.zero=db.zero.filter(z=>z!==sel);
+    let fields=null;
+    if(mode==='xfer'){
+      if(!draft.from||!draft.to||draft.from===draft.to) return;
+      fields={type:'xfer',amt:a,from:draft.from,to:draft.to};
+    }else if(mode==='pin'||mode==='pout'){
+      if(!draft.acct) return;
+      let pid=draft.person;
+      if(pid==='__new'){
+        const nm=(draft.pName||'').trim(); if(!nm) return;
+        pid=uid(); db.people.push({id:pid,name:nm,opening:0});
+      }
+      if(!pid) return;
+      fields={type:mode,amt:a,person:pid,acct:draft.acct};
+      if(mode==='pout'){ fields.lendFrom=draft.lendFrom||defaultBucket(st); }
+    }else{
+      if(!draft.tag||!draft.acct) return;
+      fields={type:mode,amt:a,tag:draft.tag,acct:draft.acct,
+        bucket:(mode==='out')?(draft.bucket||defaultBucket(st)):null,note:(draft.note||'').trim()};
+    }
+    // Transaction fee: optional, independent of the transaction's own amount/category. Not offered
+    // for Earned (no payment channel involved) or From-a-person (the fee, if any, is the sender's
+    // cost, not the receiver's — this app only tracks the user's own money).
+    if(mode!=='in' && mode!=='pin'){
+      const f=toS(draft.fee);
+      if(f>0) fields.fee=f;
+    }
+
+    if(draft.att&&draft.att.length) fields.att=draft.att.slice();
+    if(editId){
+      const i=db.entries.findIndex(e=>e.id===editId);
+      if(i>=0){
+        const kept=db.entries[i];                    // identity, day and original order survive the edit
+        db.entries[i]=Object.assign({id:kept.id,day:kept.day,ts:kept.ts},fields);
+      }
+      editId=null;
+    }else{
+      db.entries.push(Object.assign({id:uid(),day:sel,ts:Date.now()},fields));
+    }
+    mode=null; draft={};
+    await save(); render();
+  }
+
+  function exportCsv(){
+    const head='date,type,amount_etb,category,group,account,from,to,bucket,person,note\n';
+    const rows=db.entries.slice().sort((a,b)=>a.day<b.day?-1:1).map(e=>{
+      if(e.type==='xfer') return [e.day,'transfer',(e.amt/S).toFixed(2),'','','',e.from,e.to,'','','""'].join(',');
+      if(e.type==='pin')  return [e.day,'from_person',(e.amt/S).toFixed(2),'','',e.acct,'','','',pName(e.person),'""'].join(',');
+      if(e.type==='pout') return [e.day,'to_person',(e.amt/S).toFixed(2),'','',e.acct,'','',e.bucket||'',pName(e.person),'""'].join(',');
+      return [e.day,e.type==='in'?'income':'expense',(e.amt/S).toFixed(2),e.tag,
+        GROUP_OF[e.tag]||(e.type==='in'?'Income':''),e.acct,'','',e.bucket||'','',
+        '"'+(e.note||'').replace(/"/g,'""')+'"'].join(',');
+    });
+    db.zero.forEach(d=>rows.push(d+',no-spend,0.00,,,,,,,,""'));
+    const url=URL.createObjectURL(new Blob([head+rows.join('\n')],{type:'text/csv'}));
+    const a=document.createElement('a'); a.href=url; a.download='ledger.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  (async function boot(){
+    const th=lsGet(THEMEKEY); if(th==='vellum'||th==='viewport') theme=th;
+    token=lsGet(TOKENKEY);
+    if(!token){ renderLogin(''); return; }
+    // Idle check happens BEFORE loading any data: a reload/resume after the device sat untouched
+    // past the limit must never flash a signed-in user's ledger, even for a moment.
+    const stored=Number(lsGet(IDLE_KEY));
+    if(stored && (Date.now()-stored)>=IDLE_LIMIT_MS){
+      token=null; lsDel(TOKENKEY); lsDel(IDLE_KEY);
+      renderLogin('Signed out after 10 minutes of inactivity, for your privacy.');
+      return;
+    }
+    document.getElementById('root').innerHTML='<div class="sheet"><p style="color:var(--graphite);font-family:var(--mono)">Loading…</p></div>';
+    await enter(null);
+  })();
+})();
+</script>
+
+</body>
+</html>
