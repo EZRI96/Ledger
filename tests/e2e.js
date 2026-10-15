@@ -198,6 +198,38 @@ let n = 0; const ok = (m) => { n++; console.log('  ok  ' + m); };
   assert.strictEqual(rawAlice.code, 'FORBIDDEN');
   ok('server refuses a non-admin adminLoad call outright (defense in depth beyond the hidden UI)');
 
+  // --- Year page "Personal cap" must agree with the Personal bucket (regression: it counted loans
+  //     lent from Personal but never credited them back when repaid, so it showed "over" while the
+  //     bucket still had money left) ---
+  {
+    const capUser = 'capcheck' + Date.now();
+    const capPw = mk(capUser);
+    const cu = J(g.rpc('login', '', { username: capUser, password: capPw })).data;
+    const ym = new Date().toISOString().slice(0, 7);          // current month, so no refill boundary interferes
+    const d1 = ym + '-01', d2 = ym + '-02';
+    const E = (id, o) => Object.assign({ id, day: d1, ts: 1 }, o);
+    J(g.rpc('save', cu.token, { baseRev: 0,
+      meta: { setup: { floor: 100000, bufferMonths: 3, opening: { Cash: 500000, telebirr: 0, Bank: 0 }, envStart: d1 },
+              people: [{ id: 'p1', name: 'Friend', opening: 0 }], zero: [], lastBackup: Date.now() },
+      upserts: [
+        E('s1', { type: 'out', amt: 80000, tag: 'Food', acct: 'Cash', bucket: 'personal', note: '' }),      // spend 800
+        E('l1', { type: 'pout', amt: 50000, person: 'p1', acct: 'Cash', lendFrom: 'personal', ts: 2 }),      // lend 500 from Personal
+        Object.assign(E('r1', { type: 'pin', amt: 50000, person: 'p1', acct: 'Cash' }), { day: d2 }),      // repaid 500
+      ], deletes: [] }));
+    const yctx = await browser.newContext({ viewport: { width: 420, height: 900 } });
+    await yctx.addInitScript(SHIM);
+    const yp = await yctx.newPage();
+    yp.on('pageerror', (e) => errors.push(String(e)));
+    await yp.goto(url);
+    await yp.fill('#l_u', capUser); await yp.fill('#l_p', capPw); await yp.click('#l_go');
+    await yp.waitForSelector('.nav');
+    await yp.click('.nav button[data-t="year"]'); await yp.waitForSelector('.ym');
+    const card = (await yp.textContent('.ym')).replace(/\s+/g, ' ');
+    assert.ok(/Personal cap — 200 under/.test(card), card);  // 1,000 cap − 800 spent; the 500 loan came back
+    ok('Year page Personal cap credits repaid loans and matches the Personal bucket');
+    await yctx.close();
+  }
+
   // --- idle sign-out (10 min), path 1: a stale session is caught on load, before anything renders ---
   const daveUser = 'dave' + Date.now();
   const davePw = mk(daveUser);

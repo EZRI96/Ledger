@@ -1065,6 +1065,12 @@ input,button,select,textarea{touch-action:manipulation}
     const owed=()=>db.people.reduce((s,x)=>s+Math.max(0,-(bal[x.id]||0)),0);
     const lent=()=>db.people.reduce((s,x)=>s+Math.max(0, (bal[x.id]||0)),0);
     const savings=[];                                             // {month, amt} roll-over history
+    // Per-month use of the Personal allowance, recorded at the same points this engine moves money in
+    // and out of Personal — so the Year page's "Personal cap" line can never disagree with the Personal
+    // bucket. Counts what is asked of Personal first (spend, lend, repay a debt, fees), and gives back
+    // loan repayments that this engine returns to Personal.
+    const capUse={};
+    const useCap=(k,a)=>{ const m=monthKey(k); capUse[m]=(capUse[m]||0)+a; };
 
     // ----- migration anchor: one fresh Personal envelope, rest to Buffer->Vault -----
     const openCash=ACCOUNTS.reduce((s,a)=>s+(db.setup.opening[a]||0),0);
@@ -1105,7 +1111,8 @@ input,button,select,textarea{touch-action:manipulation}
       }
       const e=ev.e;
       if(e.type==='in'){ acc[e.acct]=(acc[e.acct]||0)+e.amt; addReserve(bk, e.amt, 'buffer'); }
-      else if(e.type==='out'){ acc[e.acct]=(acc[e.acct]||0)-e.amt; drawDown(bk, e.amt, e.bucket); }
+      else if(e.type==='out'){ acc[e.acct]=(acc[e.acct]||0)-e.amt; drawDown(bk, e.amt, e.bucket);
+        if((e.bucket||'personal')==='personal') useCap(ev.k, e.amt); }
       else if(e.type==='xfer'){ acc[e.from]=(acc[e.from]||0)-e.amt; acc[e.to]=(acc[e.to]||0)+e.amt; }
       else if(e.type==='pin'){                                    // money IN from a person
         const b=bal[e.person]||0;
@@ -1118,6 +1125,7 @@ input,button,select,textarea{touch-action:manipulation}
           const lot=st[st.length-1];
           const t=Math.min(rem, lot.amt);
           addReserve(bk, t, lot.from==='personal'?'personal':(lot.from==='vault'?'vault':'buffer'));
+          if(lot.ask==='personal') useCap(ev.k, -t);              // repaid: give back what the loan charged the cap
           lot.amt-=t; rem-=t; if(lot.amt<=1e-9) st.pop();
         }
         if(rem>0) addReserve(bk, rem, 'buffer');                  // safety: unmatched -> buffer
@@ -1130,14 +1138,15 @@ input,button,select,textarea{touch-action:manipulation}
         const repay=Math.min(e.amt, Math.max(0,-b));              // pay down what you owe them
         const give=e.amt-repay;                                   // remainder is a new loan you make
         acc[e.acct]=(acc[e.acct]||0)-e.amt;
-        if(repay>0) drawDown(bk, repay);                          // repaying a debt spends from your buckets
+        if(repay>0){ drawDown(bk, repay); useCap(ev.k, repay); } // repaying a debt spends from your buckets
         if(give>0){
           const from=e.lendFrom||'personal';
+          if(from==='personal') useCap(ev.k, give);
           const taken=drawDown(bk, give, from);                  // cascades Personal→Buffer→Vault, same
                                                                    // protection spending already had
           bk.lent+=give;
           const st=(lots[e.person]||(lots[e.person]=[]));
-          taken.forEach(t=>st.push({amt:t.amt, from:t.bucket}));  // one lot per bucket actually drawn from,
+          taken.forEach(t=>st.push({amt:t.amt, from:t.bucket, ask:from}));  // one lot per bucket actually drawn from,
         }                                                         // so a cascaded loan still repays correctly
         bal[e.person]=b+e.amt;
       }
@@ -1147,7 +1156,9 @@ input,button,select,textarea{touch-action:manipulation}
       if(e.fee>0){
         const feeAcct=(e.type==='xfer')?e.from:e.acct;
         if(feeAcct) acc[feeAcct]=(acc[feeAcct]||0)-e.fee;
-        drawDown(bk, e.fee, e.bucket||e.lendFrom||'personal');
+        const feeFrom=e.bucket||e.lendFrom||'personal';
+        drawDown(bk, e.fee, feeFrom);
+        if(feeFrom==='personal') useCap(ev.k, e.fee);
       }
     }
     const cash=ACCOUNTS.reduce((s,a)=>s+acc[a],0);
@@ -1157,7 +1168,7 @@ input,button,select,textarea{touch-action:manipulation}
     const yours=Math.max(0,Math.min(bk.personal,cash));
     const onLoan=Math.max(0,Math.min(bk.borrowed,cash-yours));
     const canPay=Math.max(0,cash);
-    return {accounts:acc,buckets:bk,people:bal,cash,lentOut,youOwe,assets,bkTotal,savings,
+    return {accounts:acc,buckets:bk,people:bal,cash,lentOut,youOwe,assets,bkTotal,savings,capUse,
             yours,onLoan,canPay,reachable:yours,netWorth:assets-youOwe};
   }
   // income/repay now land in reserves; preview shows Buffer/Vault split (no Personal, no waterfall)
@@ -1200,8 +1211,8 @@ input,button,select,textarea{touch-action:manipulation}
   // Aggregate the whole log into per-month rows: spending by group, earned income, and gap.
   // Personal-line = Essential (living), plus Discretionary and Work shown separately.
   function monthlyRollup(){
-    const M={};                                     // 'YYYY-MM' -> {ess,disc,work,earned,big,fee,personalOut}
-    const touch=m=>{ if(!M[m]) M[m]={ess:0,disc:0,work:0,earned:0,big:null,fee:0,personalOut:0}; return M[m]; };
+    const M={};                                     // 'YYYY-MM' -> {ess,disc,work,earned,big,fee}
+    const touch=m=>{ if(!M[m]) M[m]={ess:0,disc:0,work:0,earned:0,big:null,fee:0}; return M[m]; };
     for(const e of db.entries){
       const m=e.day.slice(0,7);
       if(e.type==='out'){
@@ -1211,16 +1222,14 @@ input,button,select,textarea{touch-action:manipulation}
         else if(g==='Work') row.work+=e.amt;
         else row.disc+=e.amt;
         if(!row.big||e.amt>row.big.amt) row.big={amt:e.amt,tag:e.tag,note:e.note||''};
-        if((e.bucket||'personal')==='personal') row.personalOut+=e.amt;
       }else if(e.type==='in'){ touch(m).earned+=e.amt; }
-      else if(e.type==='pout' && e.lendFrom==='personal'){ touch(m).personalOut+=e.amt; }
+      else if(e.type==='pout' && e.lendFrom==='personal'){ touch(m); }   // keep the month listed, as before
       if(e.fee>0) touch(m).fee+=e.fee;               // fees ride on any type — tracked independently of category
     }
     const months=Object.keys(M).sort();
     return months.map(m=>{
       const r=M[m]; const spent=r.ess+r.disc+r.work; const net=r.earned-spent;
-      return {month:m, ess:r.ess, disc:r.disc, work:r.work, spent, earned:r.earned, net, big:r.big, fee:r.fee,
-        personalOut:r.personalOut};
+      return {month:m, ess:r.ess, disc:r.disc, work:r.work, spent, earned:r.earned, net, big:r.big, fee:r.fee};
     });
   }
   function yearlyRollup(rows){
@@ -2063,7 +2072,7 @@ input,button,select,textarea{touch-action:manipulation}
       if(r.big) extra.push(`Biggest: <b>${esc(r.big.note||r.big.tag)}</b>${r.big.note?` <span class="mut">(${esc(r.big.tag)})</span>`:''} — <span class="amt">${fmt(r.big.amt)}</span>`);
       if(r.fee>0) extra.push(`Fees this month — <span class="amt" style="color:var(--red)">${fmt(r.fee)}</span>`);
       if(hasFloor()){
-        const d=r.personalOut-floorS(), over=d>0;
+        const d=(st.capUse[r.month]||0)-floorS(), over=d>0;
         extra.push(`Personal cap — <span class="amt" style="color:${over?'var(--red)':'var(--green)'}">${
           over?fmt(d)+' over':fmt(Math.abs(d))+' under'}</span>`);
       }
